@@ -22,7 +22,7 @@
         <table border="1" cellspacing="1" cellpadding="1" align="center">
             <thead>
                 <tr>
-                    <th>ID</th>
+                    <th>N°</th>
                     <th>Nombre</th>
                     <th>Estado</th>
                     <th>Eliminar</th>
@@ -61,7 +61,6 @@
                         %>
                         <tr>
                              <td><%out.print(num);%></td>
-                            <td><% out.print(rs.getString(1)); %></td>
                             <td><% out.print(rs.getString(2)); %></td>
                             <td><% out.print(rs.getString(3)); %></td>
                             <td><a href="DatosPais.jsp?f_accion=E&f_idpais=<%out.print(ide);%>">Eliminar></a></td>
