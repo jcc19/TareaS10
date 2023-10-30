@@ -1,0 +1,95 @@
+create or replace PACKAGE Pkg_EIR_Balance IS
+
+
+  TYPE text_data IS RECORD (
+    anexo                     EIR_ANEXO.codigo%TYPE,
+    version                   EIR_ANEXO.version%TYPE,
+    linea                     VARCHAR2(1000)
+  );
+
+  TYPE values_cs IS REF CURSOR;
+
+  TYPE text_arr IS TABLE OF text_data INDEX BY BINARY_INTEGER;
+
+  -- ----------------------------------------------------------------
+  PROCEDURE PRC_EIR_GENERA_BALANCE ( enumSecuencia  IN  NUMBER,
+                                     enumUsuario    IN  NUMBER
+                                   ) ;
+
+  -- ----------------------------------------------------------
+  PROCEDURE PRC_EIR_GENERA_SUCAVE ( enumSecuencia  IN  NUMBER,
+                                    enumUsuario    IN  NUMBER
+                                  );
+
+  -- ----------------------------------------------------------
+  PROCEDURE PRC_EIR_GENERA_UTILIDADES ( enumSecuencia  IN  NUMBER,
+                                        enumUsuario    IN  NUMBER
+                                      );
+
+  -- ----------------------------------------------------------
+  PROCEDURE PRC_EIR_CONSOLIDAR_CUENTA( enumSecuencia  IN  NUMBER,
+                                       enumUsuario    IN  NUMBER
+                                     );
+
+  -- ----------------------------------------------------------
+  PROCEDURE PRC_EIR_CTAS_INTEGRADORAS ( enumSecuencia  IN  NUMBER,
+                                        enumUsuario    IN  NUMBER
+                                       );
+
+  -- --------------------------------------------------------------------------
+  PROCEDURE PRC_EIR_TEXTO(pAnio      IN NUMBER,
+                          pMes       IN NUMBER,
+                          pAnexo     IN NUMBER,
+                          pVersion   IN NUMBER,
+                          pEmpresa   IN VARCHAR2,
+                          text_data OUT Pkg_EIR_Balance.text_arr );
+  -- --------------------------------------------------------------------------
+  PROCEDURE PRC_EIR_TEXTO_BCR(pAnio      IN NUMBER,
+                              pMes       IN NUMBER,
+                              pAnexo     IN NUMBER,
+                              pVersion   IN NUMBER,
+                              pEmpresa   IN VARCHAR2,
+                              text_data OUT Pkg_EIR_Balance.text_arr );
+  -- --------------------------------------------------------------------------
+  PROCEDURE PRC_EIR_EXCEL(pAnio      IN NUMBER,
+                          pMes       IN NUMBER,
+                          pAnexo     IN NUMBER,
+                          pVersion   IN NUMBER,
+                          pEmpresa   IN VARCHAR2,
+                          text_data OUT Pkg_EIR_Balance.text_arr );
+  -- ----------------------------------------------------------
+  FUNCTION FUN_EIR_VALIDA_CUENTA (evc2Empresa   IN VARCHAR2,
+                                  evc2Cuenta    IN VARCHAR2
+                                 ) RETURN BOOLEAN;
+
+  -- ----------------------------------------------------------
+  PROCEDURE PRC_EIR_CTAS_A_CAMBIAR (enumAnio      IN NUMBER,
+                                    enumMes       IN NUMBER,
+                                    evc2Empresa   IN VARCHAR2,
+                                    evc2Cuenta    IN VARCHAR2,
+                                    snumSaldoIni  OUT NUMBER,
+                                    snumSaldoFin  OUT NUMBER
+                                   );
+
+  -- ----------------------------------------------------------
+  PROCEDURE PRC_EIR_ACTUALIZA_CUENTAS (evc2Empresa IN VARCHAR2,
+                                       enumUsuario IN NUMBER);
+
+  PROCEDURE PRC_EIR_FILE_OUT (pEmpresa       VARCHAR2, pAnio              NUMBER,
+                              pMes             NUMBER, pDia               NUMBER,
+                              pAnexo           NUMBER, pVersion           NUMBER,
+                              pCodUsuario      NUMBER, pAnioText          NUMBER,
+                              pMesText         NUMBER, pDiaText           NUMBER,
+                              pPreoDef       VARCHAR2,
+                              pEntidad       VARCHAR2, pTipo_formato    VARCHAR2,
+                              pTipo_registro VARCHAR2, cFile        OUT VARCHAR2);
+
+  PROCEDURE PRC_EIR_REGISTRO_CONTROL (pEmpresa       VARCHAR2, pAnio              NUMBER,
+                                      pMes             NUMBER, pDia               NUMBER,
+                                      pAnexo           NUMBER, pVersion           NUMBER,
+                                      pCodUsuario      NUMBER, pAnioText          NUMBER,
+                                      pMesText         NUMBER, pDiaText           NUMBER,
+                                      pPreoDef       VARCHAR2,
+                                      pEntidad       VARCHAR2, pTipo_formato    VARCHAR2,
+                                      pTipo_registro VARCHAR2, cLine        OUT VARCHAR2);
+END Pkg_EIR_Balance;

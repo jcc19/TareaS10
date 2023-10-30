@@ -1,0 +1,2141 @@
+create or replace PACKAGE BODY PKG_EIR_BALANCE IS
+
+  -- ----------------------------------------------------------
+  PROCEDURE PRC_EIR_GENERA_BALANCE ( enumSecuencia  IN  NUMBER,
+                                     enumUsuario    IN  NUMBER
+                                   )
+  IS
+
+  /* PRC[DO_PLSQL] DECLARACIONES GENERALES */
+
+     /* VAR [DO_PLSQL] DECLARACION DE VARIABLES*/
+     S              EIR_PROCESO_JOB%ROWTYPE;
+
+     lvc2Empresa    EIR_PROCESO_JOB.empresa%TYPE;
+     ldatFecProceso EIR_PROCESO_JOB.fecha%TYPE;
+     lnumAnexo      EIR_PROCESO_JOB.anexo%TYPE;
+     lnumVersion    EIR_PROCESO_JOB.version%TYPE;
+     lnumProducto   EIR_PROCESO_JOB.producto%TYPE;
+     lnumProceso    EIR_PROCESO.codigo%TYPE;
+
+     lnumAnio       EIR_PERIODO.anio%TYPE;
+     lnumMes        EIR_PERIODO.mes%TYPE;
+     lnumDia        NUMBER;
+     eAdv           EXCEPTION;
+
+     /* FIN VAR [DO_PLSQL] DECLARACION DE VARIABLES */
+
+     /* CRS [DO_PLSQL] CURSOR SALDO_CONTABLE */
+     CURSOR crs_saldo(evc2Empresa IN VARCHAR2,
+                      enumAnio    IN NUMBER,
+                      enumMes     IN NUMBER
+                      )
+     IS
+     SELECT
+            cuenta                                                 AS cuenta,
+            (saldo_anterior_debe_nac - saldo_anterior_haber_nac )  AS saldo_inicial,
+      --<I2007_0469-SAP-28/10/2008>
+      SALDO_MOVIMIENTO_DEBE_NAC AS debe,
+      SALDO_MOVIMIENTO_HABER_NAC  AS haber,
+      SALDO_ACTUAL_NAC     AS saldo_actual
+          /*  saldo_debe_nacional                                    AS debe,
+            saldo_haber_nacional                                   AS haber,
+            (saldo_anterior_debe_nac - saldo_anterior_haber_nac) +
+            (saldo_debe_nacional - saldo_haber_nacional)           AS saldo_actual*/
+      --<F2007_0469-SAP-28/10/2008>
+      FROM SALDO_CONTABLE
+     WHERE anio     = enumAnio    --'2005'
+       AND mes      = enumMes ;    --'10'
+       --AND cuenta   <> '39110201'; -- Utilidades
+     /* FIN CRS [DO_PLSQL] CURSOR SALDO_CONTABLE */
+
+  /* FIN PRC[DO_PLSQL] DECLARACIONES GENERALES */
+
+  /* PRC [CMO_PLSQL] INICIO DE PROGRAMA */
+  -- Inicio Proceso Principal --
+  BEGIN
+    -- Proceso en Ejecucion - Normal
+    Pkg_EIR_Dml.U_EIR_Anexo_Proceso(enumSecuencia,2,enumUsuario);
+
+    S              := Pkg_EIR_Dml.s_EIR_Proceso_Anexo(P_SECUENCIA => enumSecuencia);
+    lvc2Empresa    := S.Empresa ;
+    ldatFecProceso := S.Fecha ;
+    lnumAnexo      := S.Anexo ;
+    lnumVersion    := S.Version ;
+
+    lnumAnio       := TO_CHAR(ldatFecProceso,'YYYY');
+    lnumMes        := TO_CHAR(ldatFecProceso,'MM');
+    lnumDia        := TO_CHAR(ldatFecProceso,'DD');
+    lnumProceso    := S.Proceso ;
+    lnumProducto   := S.Producto;
+
+    -- Valida el proceso
+    IF NOT Pkg_EIR_Gral.f_Valida_Proceso(enumSecuencia,enumUsuario) THEN
+       RAISE eAdv ;
+    END IF;
+    --- Inicializar la tabla Plan de Cuentas (EIR_CUENTA) de XX_CUENTA (Financial)
+    PRC_EIR_ACTUALIZA_CUENTAS(evc2Empresa => lvc2Empresa,
+                              enumUsuario => enumUsuario
+                             );
+
+    DELETE FROM EIR_BALANCE_COMPROBACION
+    WHERE empresa = lvc2Empresa
+    AND anio = lnumAnio
+    AND mes = lnumMes;
+
+    /* PRC [CFO_PLSQL] CURSOR SALDO_CONTABLE (ciclo for)*/
+    FOR i IN crs_saldo( evc2Empresa => lvc2Empresa,--'33'
+                        enumAnio    => lnumAnio,
+                        enumMes     => lnumMes
+                       ) LOOP
+        --
+        BEGIN
+           INSERT INTO EIR_BALANCE_COMPROBACION
+             (empresa, anio, mes, cuenta,
+              saldo_inicial, debe, haber, saldo_final,
+              codigo_usuario, fecha_actualizacion)
+           VALUES
+             (lvc2Empresa, lnumAnio, lnumMes, i.cuenta,
+              i.saldo_inicial, i.debe, i.haber, i.saldo_actual,
+              enumUsuario, SYSDATE);
+        EXCEPTION
+           WHEN DUP_VAL_ON_INDEX THEN
+              UPDATE EIR_BALANCE_COMPROBACION
+                 SET saldo_inicial = i.saldo_inicial,
+                     debe          = i.debe,
+                     haber         = i.haber,
+                     saldo_final   = i.saldo_actual
+               WHERE empresa      = lvc2Empresa
+                 AND anio         = lnumAnio
+                 AND mes          = lnumMes
+                 AND cuenta       = i.cuenta;
+           WHEN OTHERS THEN
+              RAISE eAdv ;
+        END;
+
+    END LOOP;
+    /* FIN PRC [CFO_PLSQL] CURSOR SALDO_CONTABLE (ciclo for)*/
+
+    IF NOT Pkg_EIR_Gral.f_status_log (enumSecuencia,3) THEN
+       ROLLBACK;
+       -- Proceso Finalizado - Error
+       Pkg_EIR_Dml.U_EIR_Anexo_Proceso(enumSecuencia,3,enumUsuario);
+    ELSE
+       COMMIT;
+       -- Proceso Finalizado - Normal
+       Pkg_EIR_Dml.U_EIR_Anexo_Proceso(enumSecuencia,3,enumUsuario);
+       -- Finaliza el proceso
+       Pkg_EIR_Dml.I_EIR_Periodo_Detalle(lnumAnio,
+                                         lnumMes,
+                                         lnumProceso,
+                                         lnumProducto,
+                                         lvc2Empresa,
+                                         enumSecuencia,
+                                         enumUsuario);
+     END IF;
+    /* PRC [CEO_PLSQL] EXECEPTION (ERROR) */
+    -- mostrar los errores no encontrados
+  EXCEPTION
+     WHEN eAdv THEN
+        -- Proceso Finalizado - Advertencia
+        Pkg_EIR_Dml.U_EIR_Anexo_Proceso(enumSecuencia,3,enumUsuario);
+     /* FIN PRC [CEO_PLSQL] EXECEPTION (ERROR) */
+  END PRC_EIR_GENERA_BALANCE;
+  /* FIN PRC [CMO_PLSQL] INICIO DE PROGRAMA */
+
+
+  -- ----------------------------------------------------------
+  PROCEDURE PRC_EIR_GENERA_SUCAVE ( enumSecuencia  IN  NUMBER,
+                                    enumUsuario    IN  NUMBER
+                                   )
+  IS
+
+  /* PRC[DO_PLSQL] DECLARACIONES GENERALES */
+
+     /* VAR [DO_PLSQL] DECLARACION DE VARIABLES*/
+     S              EIR_PROCESO_JOB%ROWTYPE;
+
+     lvc2Empresa    EIR_PROCESO_JOB.empresa%TYPE;
+     ldatFecProceso EIR_PROCESO_JOB.fecha%TYPE;
+     lnumAnexo      EIR_PROCESO_JOB.anexo%TYPE;
+     lnumVersion    EIR_PROCESO_JOB.version%TYPE;
+     lnumProducto   EIR_PROCESO_JOB.producto%TYPE;
+     lnumProceso    EIR_PROCESO.codigo%TYPE;
+
+     lnumAnio       EIR_PERIODO.anio%TYPE;
+     lnumMes        EIR_PERIODO.mes%TYPE;
+     lnumDia        NUMBER;
+     eAdv           EXCEPTION;
+
+     /* FIN VAR [DO_PLSQL] DECLARACION DE VARIABLES */
+
+     /* CRS [DO_PLSQL] CURSOR PRINCIPAL */
+     CURSOR crs_principal (evc2Empresa IN VARCHAR2,
+                           enumAnio    IN NUMBER,
+                           enumMes     IN NUMBER
+                           )
+     IS
+     SELECT DISTINCT
+            sdia.cuenta_nivel1,  Fun_EIR_Cuenta(evc2Empresa, trim(sdia.cuenta_nivel1)) descta1
+       FROM VIEW_BALANCE_COMPROBACION    sdia
+      WHERE sdia.EMPRESA = evc2Empresa --'073'
+        AND sdia.ANIO    = enumAnio    --'2005'
+        AND sdia.MES     = enumMes;    --'10'
+     /* FIN CRS [DO_PLSQL] CURSOR PRINCIPAL*/
+
+     /* CRS [DO_PLSQL] CURSOR NIVEL_1 */
+     CURSOR crs_nivel_1 (evc2Empresa IN VARCHAR2,
+                         enumAnio    IN NUMBER,
+                         enumMes     IN NUMBER,
+                         evc2NiveL   IN VARCHAR2)
+     IS
+     SELECT
+            sdia.cuenta_nivel1          AS cuenta,
+            SUM(sdia.saldo_inicial)     AS saldo_anterior,
+            SUM(sdia.debe)              AS debe,
+            SUM(sdia.haber)             AS haber,
+            SUM(sdia.saldo_final)       AS saldo_actual
+       FROM VIEW_BALANCE_COMPROBACION    sdia
+      WHERE sdia.EMPRESA = evc2Empresa --'073'
+        AND sdia.ANIO    = enumAnio    --'2005'
+        AND sdia.MES     = enumMes     --'10'
+        AND sdia.CUENTA_NIVEL1 = evc2NiveL --1,2,3,4,5 parametro
+      GROUP BY  sdia.cuenta_nivel1
+     HAVING SUM(sdia.saldo_inicial) <> 0
+         OR SUM(sdia.debe)          <> 0
+         OR SUM(sdia.haber)         <> 0;
+     /* FIN CRS [DO_PLSQL] CURSOR NIVEL_1*/
+
+     /* CRS [DO_PLSQL] CURSOR NIVEL_2 */
+     CURSOR crs_nivel_2 (evc2Empresa IN VARCHAR2,
+                         enumAnio    IN NUMBER,
+                         enumMes     IN NUMBER,
+                         evc2NiveL   IN VARCHAR2)
+     IS
+     SELECT
+            sdia.cuenta_nivel2           AS cuenta,
+            SUM(sdia.saldo_inicial)      AS saldo_anterior,
+            SUM(sdia.debe)               AS debe,
+            SUM(sdia.haber)              AS haber,
+            SUM(sdia.saldo_final)        AS saldo_actual
+       FROM VIEW_BALANCE_COMPROBACION    sdia
+      WHERE sdia.EMPRESA = evc2Empresa --'073'
+        AND sdia.ANIO    = enumAnio    --'2005'
+        AND sdia.MES     = enumMes     --'10'
+        AND sdia.CUENTA_NIVEL1 = evc2NiveL --1,2,3,..
+      GROUP BY  sdia.cuenta_nivel2
+     HAVING (SUM(sdia.saldo_inicial) <> 0
+         OR SUM(sdia.debe)          <> 0
+         OR SUM(sdia.haber)         <> 0
+         )
+         AND sdia.cuenta_nivel2 IS NOT NULL;
+     /* FIN CRS [DO_PLSQL] CURSOR NIVEL_2*/
+
+     /* CRS [DO_PLSQL] CURSOR NIVEL_3 */
+     CURSOR crs_nivel_3 (evc2Empresa IN VARCHAR2,
+                         enumAnio    IN NUMBER,
+                         enumMes     IN NUMBER,
+                         evc2NiveL   IN VARCHAR2)
+     IS
+     SELECT
+            sdia.cuenta_nivel3            AS cuenta,
+            SUM(sdia.saldo_inicial)       AS saldo_anterior,
+            SUM(sdia.debe)                AS debe,
+            SUM(sdia.haber)               AS haber,
+            SUM(sdia.saldo_final)         AS saldo_actual
+       FROM VIEW_BALANCE_COMPROBACION    sdia
+      WHERE sdia.EMPRESA = evc2Empresa --'073'
+        AND sdia.ANIO    = enumAnio    --'2005'
+        AND sdia.MES     = enumMes     --'10'
+        AND sdia.CUENTA_NIVEL1 = evc2NiveL --1
+      GROUP BY  sdia.cuenta_nivel3
+     HAVING (SUM(sdia.saldo_inicial) <> 0
+         OR SUM(sdia.debe)          <> 0
+         OR SUM(sdia.haber)         <> 0
+         )
+        AND sdia.cuenta_nivel3 IS NOT NULL;
+     /* FIN CRS [DO_PLSQL] CURSOR NIVEL_3*/
+
+     /* CRS [DO_PLSQL] CURSOR NIVEL_4 */
+     CURSOR crs_nivel_4 (evc2Empresa IN VARCHAR2,
+                         enumAnio    IN NUMBER,
+                         enumMes     IN NUMBER,
+                         evc2NiveL   IN VARCHAR2)
+     IS
+     SELECT
+            sdia.cuenta_nivel4            AS cuenta,
+            SUM(sdia.saldo_inicial)       AS saldo_anterior,
+            SUM(sdia.debe)                AS debe,
+            SUM(sdia.haber)               AS haber,
+            SUM(sdia.saldo_final)         AS saldo_actual
+       FROM VIEW_BALANCE_COMPROBACION    sdia
+      WHERE sdia.EMPRESA = evc2Empresa --'073'
+        AND sdia.ANIO    = enumAnio    --'2005'
+        AND sdia.MES     = enumMes     --'10'
+        AND sdia.CUENTA_NIVEL1 = evc2NiveL --1
+      GROUP BY  sdia.cuenta_nivel4
+     HAVING (SUM(sdia.saldo_inicial) <> 0
+         OR SUM(sdia.debe)          <> 0
+         OR SUM(sdia.haber)         <> 0
+         )
+        AND sdia.cuenta_nivel4 IS NOT NULL;
+     /* FIN CRS [DO_PLSQL] CURSOR NIVEL_4*/
+
+     /* CRS [DO_PLSQL] CURSOR NIVEL_5 */
+     CURSOR crs_nivel_5 (evc2Empresa IN VARCHAR2,
+                         enumAnio    IN NUMBER,
+                         enumMes     IN NUMBER,
+                         evc2NiveL   IN VARCHAR2)
+     IS
+     SELECT
+            sdia.cuenta_nivel5            AS cuenta,
+            SUM(sdia.saldo_inicial)       AS saldo_anterior,
+            SUM(sdia.debe)                AS debe,
+            SUM(sdia.haber)               AS haber,
+            SUM(sdia.saldo_final)         AS saldo_actual
+       FROM VIEW_BALANCE_COMPROBACION    sdia
+      WHERE sdia.EMPRESA = evc2Empresa --'073'
+        AND sdia.ANIO    = enumAnio    --'2005'
+        AND sdia.MES     = enumMes     --'10'
+        AND sdia.CUENTA_NIVEL1 = evc2NiveL --1
+      GROUP BY  sdia.cuenta_nivel5
+     HAVING (SUM(sdia.saldo_inicial) <> 0
+         OR SUM(sdia.debe)          <> 0
+         OR SUM(sdia.haber)         <> 0
+         )
+        AND sdia.cuenta_nivel5 IS NOT NULL;
+     /* FIN CRS [DO_PLSQL] CURSOR NIVEL_5*/
+
+     /* CRS [DO_PLSQL] CURSOR NIVEL_6 */
+     CURSOR crs_nivel_6 (evc2Empresa IN VARCHAR2,
+                         enumAnio    IN NUMBER,
+                         enumMes     IN NUMBER,
+                         evc2NiveL   IN VARCHAR2)
+     IS
+     SELECT
+            sdia.cuenta_nivel6            AS cuenta,
+            SUM(sdia.saldo_inicial)       AS saldo_anterior,
+            SUM(sdia.debe)                AS debe,
+            SUM(sdia.haber)               AS haber,
+            SUM(sdia.saldo_final)         AS saldo_actual
+       FROM VIEW_BALANCE_COMPROBACION    sdia
+      WHERE sdia.EMPRESA = evc2Empresa --'073'
+        AND sdia.ANIO    = enumAnio    --'2005'
+        AND sdia.MES     = enumMes     --'10'
+        AND sdia.CUENTA_NIVEL1 = evc2NiveL --1
+      GROUP BY  sdia.cuenta_nivel6
+     HAVING (SUM(sdia.saldo_inicial) <> 0
+        OR SUM(sdia.debe)          <> 0
+        OR SUM(sdia.haber)         <> 0
+        )
+        AND sdia.cuenta_nivel6 IS NOT NULL;
+     /* FIN CRS [DO_PLSQL] CURSOR NIVEL_6*/
+
+     /* CRS [DO_PLSQL] CURSOR NIVEL_7 */
+     CURSOR crs_nivel_7 (evc2Empresa IN VARCHAR2,
+                         enumAnio    IN NUMBER,
+                         enumMes     IN NUMBER,
+                         evc2NiveL   IN VARCHAR2)
+     IS
+     SELECT
+            sdia.cuenta_nivel7            AS cuenta,
+            SUM(sdia.saldo_inicial)       AS saldo_anterior,
+            SUM(sdia.debe)                AS debe,
+            SUM(sdia.haber)               AS haber,
+            SUM(sdia.saldo_final)         AS saldo_actual
+       FROM VIEW_BALANCE_COMPROBACION    sdia
+      WHERE sdia.EMPRESA = evc2Empresa --'073'
+        AND sdia.ANIO    = enumAnio    --'2005'
+        AND sdia.MES     = enumMes     --'10'
+        AND sdia.CUENTA_NIVEL1 = evc2NiveL --1
+      GROUP BY  sdia.cuenta_nivel7
+     HAVING (SUM(sdia.saldo_inicial) <> 0
+         OR SUM(sdia.debe)          <> 0
+         OR SUM(sdia.haber)         <> 0
+         )
+        AND sdia.cuenta_nivel7 IS NOT NULL;
+     /* FIN CRS [DO_PLSQL] CURSOR NIVEL_7*/
+
+     /* CRS [DO_PLSQL] CURSOR NIVEL_8 */
+     CURSOR crs_nivel_8 (evc2Empresa IN VARCHAR2,
+                         enumAnio    IN NUMBER,
+                         enumMes     IN NUMBER,
+                         evc2NiveL   IN VARCHAR2)
+     IS
+     SELECT
+            sdia.cuenta_nivel8            AS cuenta,
+            SUM(sdia.saldo_inicial)       AS saldo_anterior,
+            SUM(sdia.debe)                AS debe,
+            SUM(sdia.haber)               AS haber,
+            SUM(sdia.saldo_final)         AS saldo_actual
+       FROM VIEW_BALANCE_COMPROBACION    sdia
+      WHERE sdia.EMPRESA = evc2Empresa --'073'
+        AND sdia.ANIO    = enumAnio    --'2005'
+        AND sdia.MES     = enumMes     --'10'
+        AND sdia.CUENTA_NIVEL1 = evc2NiveL --1
+      GROUP BY  sdia.cuenta_nivel8
+     HAVING (SUM(sdia.saldo_inicial) <> 0
+         OR SUM(sdia.debe)          <> 0
+         OR SUM(sdia.haber)         <> 0
+        )
+        AND sdia.cuenta_nivel8 IS NOT NULL;
+     /* FIN CRS [DO_PLSQL] CURSOR NIVEL_8*/
+
+     /* CRS [DO_PLSQL] CURSOR ULTIMO */
+     CURSOR crs_ultimo (evc2Empresa IN VARCHAR2,
+                        enumAnio    IN NUMBER,
+                        enumMes     IN NUMBER,
+                        evc2NiveL   IN VARCHAR2)
+     IS
+     SELECT
+            sdia.cuenta                 AS cuenta,
+            SUM(sdia.saldo_inicial)     AS saldo_anterior,
+            SUM(sdia.debe)              AS debe,
+            SUM(sdia.haber)             AS haber,
+            SUM(sdia.saldo_final)       AS saldo_actual
+       FROM VIEW_BALANCE_COMPROBACION    sdia
+      WHERE sdia.EMPRESA = evc2Empresa --'073'
+        AND sdia.ANIO    = enumAnio    --'2005'
+        AND sdia.MES     = enumMes     --'10'
+        AND sdia.CUENTA_NIVEL1 = evc2NiveL --1  parametro
+      GROUP BY  sdia.cuenta
+     HAVING (SUM(sdia.saldo_inicial) <> 0
+         OR SUM(sdia.debe)          <> 0
+         OR SUM(sdia.haber)         <> 0
+        )
+        AND sdia.cuenta IS NOT NULL;
+     /* FIN CRS [DO_PLSQL] CURSOR ULTIMO*/
+
+  /* FIN PRC[DO_PLSQL] DECLARACIONES GENERALES */
+
+  /* PRC [CMO_PLSQL] INICIO DE PROGRAMA */
+  -- Inicio Proceso Principal --
+  BEGIN
+    -- Proceso en Ejecucion - Normal
+    Pkg_EIR_Dml.U_EIR_Anexo_Proceso(enumSecuencia,2,enumUsuario);
+
+    S              := Pkg_EIR_Dml.s_EIR_Proceso_Anexo(P_SECUENCIA => enumSecuencia);
+    lvc2Empresa    := S.Empresa ;
+    ldatFecProceso := S.Fecha ;
+    lnumAnexo      := S.Anexo ;
+    lnumVersion    := S.Version ;
+
+    lnumAnio       := TO_CHAR(ldatFecProceso,'YYYY');
+    lnumMes        := TO_CHAR(ldatFecProceso,'MM');
+    lnumDia        := TO_CHAR(ldatFecProceso,'DD');
+    lnumProceso    := S.Proceso ;
+    lnumProducto   := S.Producto;
+
+    -- Valida el proceso
+    IF NOT Pkg_EIR_Gral.f_Valida_Proceso(enumSecuencia,enumUsuario) THEN
+       RAISE eAdv ;
+    END IF;
+
+    --
+    --LOCK TABLE EIR_BALANCE_SUCAVE IN ROW SHARE MODE NOWAIT;
+    --
+
+    DELETE EIR_BALANCE_SUCAVE T
+     WHERE T.empresa = lvc2Empresa
+       AND T.anio    = lnumAnio
+       AND T.mes     = lnumMes;
+
+
+    /* PRC [CFO_PLSQL] CURSOR PRINCIPAL (ciclo for)*/
+    FOR i IN crs_principal( evc2Empresa => lvc2Empresa,
+                            enumAnio    => lnumAnio,
+                            enumMes     => lnumMes
+                          ) LOOP
+
+        /* PRC [CFO_PLSQL] CURSOR NIVEL_1 (ciclo for)*/
+        FOR a IN crs_nivel_1(evc2Empresa => lvc2Empresa,
+                             enumAnio    => lnumAnio,
+                             enumMes     => lnumMes,
+                             evc2NiveL   => i.cuenta_nivel1
+                            ) LOOP
+            -- insertar en EIR_BALANCE_SUCAVE
+            Pkg_EIR_Dml.I_EIR_BALANCE_SUCAVE(enumSecuencia => enumsecuencia,
+                                             enumUsuario   => enumusuario,
+                                             evc2Empresa   => lvc2Empresa,
+                                             enumAnio      => lnumAnio,
+                                             enumMes       => lnumMes,
+                                             evc2Cuenta    => a.cuenta,
+                                             enumSaldo_ini => a.saldo_anterior,
+                                             enumDebe      => a.debe,
+                                             enumHaber     => a.haber,
+                                             enumSaldo_fin => a.saldo_actual);
+        END LOOP;
+        /* FIN PRC [CFO_PLSQL] CURSOR NIVEL_1 (ciclo for)*/
+
+        /* PRC [CFO_PLSQL] CURSOR NIVEL_2 (ciclo for)*/
+        FOR b IN crs_nivel_2(evc2Empresa => lvc2Empresa,
+                             enumAnio    => lnumAnio,
+                             enumMes     => lnumMes,
+                             evc2NiveL   => i.cuenta_nivel1
+                            ) LOOP
+            -- insertar en EIR_BALANCE_SUCAVE
+            Pkg_EIR_Dml.I_EIR_BALANCE_SUCAVE(enumSecuencia => enumsecuencia,
+                                             enumUsuario   => enumusuario,
+                                             evc2Empresa   => lvc2Empresa,
+                                             enumAnio      => lnumAnio,
+                                             enumMes       => lnumMes,
+                                             evc2Cuenta    => b.cuenta,
+                                             enumSaldo_ini => b.saldo_anterior,
+                                             enumDebe      => b.debe,
+                                             enumHaber     => b.haber,
+                                             enumSaldo_fin => b.saldo_actual);
+        END LOOP;
+        /* FIN PRC [CFO_PLSQL] CURSOR NIVEL_2 (ciclo for)*/
+
+        /* PRC [CFO_PLSQL] CURSOR NIVEL_3 (ciclo for)*/
+        FOR c IN crs_nivel_3(evc2Empresa => lvc2Empresa,
+                             enumAnio    => lnumAnio,
+                             enumMes     => lnumMes,
+                             evc2NiveL   => i.cuenta_nivel1
+                            ) LOOP
+            -- insertar en EIR_BALANCE_SUCAVE
+            Pkg_EIR_Dml.I_EIR_BALANCE_SUCAVE(enumSecuencia => enumsecuencia,
+                                             enumUsuario   => enumusuario,
+                                             evc2Empresa   => lvc2Empresa,
+                                             enumAnio      => lnumAnio,
+                                             enumMes       => lnumMes,
+                                             evc2Cuenta    => c.cuenta,
+                                             enumSaldo_ini => c.saldo_anterior,
+                                             enumDebe      => c.debe,
+                                             enumHaber     => c.haber,
+                                             enumSaldo_fin => c.saldo_actual);
+        END LOOP;
+        /* FIN PRC [CFO_PLSQL] CURSOR NIVEL_3 (ciclo for)*/
+
+        /* PRC [CFO_PLSQL] CURSOR NIVEL_4 (ciclo for)*/
+        FOR d IN crs_nivel_4(evc2Empresa => lvc2Empresa,
+                             enumAnio    => lnumAnio,
+                             enumMes     => lnumMes,
+                             evc2NiveL   => i.cuenta_nivel1
+                            ) LOOP
+            -- insertar en EIR_BALANCE_SUCAVE
+            Pkg_EIR_Dml.I_EIR_BALANCE_SUCAVE(enumSecuencia => enumsecuencia,
+                                             enumUsuario   => enumusuario,
+                                             evc2Empresa   => lvc2Empresa,
+                                             enumAnio      => lnumAnio,
+                                             enumMes       => lnumMes,
+                                             evc2Cuenta    => d.cuenta,
+                                             enumSaldo_ini => d.saldo_anterior,
+                                             enumDebe      => d.debe,
+                                             enumHaber     => d.haber,
+                                             enumSaldo_fin => d.saldo_actual);
+        END LOOP;
+        /* FIN PRC [CFO_PLSQL] CURSOR NIVEL_4 (ciclo for)*/
+
+        /* PRC [CFO_PLSQL] CURSOR NIVEL_5 (ciclo for)*/
+        FOR e IN crs_nivel_5(evc2Empresa => lvc2Empresa,
+                             enumAnio    => lnumAnio,
+                             enumMes     => lnumMes,
+                             evc2NiveL   => i.cuenta_nivel1
+                            ) LOOP
+            -- insertar en EIR_BALANCE_SUCAVE
+            Pkg_EIR_Dml.I_EIR_BALANCE_SUCAVE(enumSecuencia => enumsecuencia,
+                                             enumUsuario   => enumusuario,
+                                             evc2Empresa   => lvc2Empresa,
+                                             enumAnio      => lnumAnio,
+                                             enumMes       => lnumMes,
+                                             evc2Cuenta    => e.cuenta,
+                                             enumSaldo_ini => e.saldo_anterior,
+                                             enumDebe      => e.debe,
+                                             enumHaber     => e.haber,
+                                             enumSaldo_fin => e.saldo_actual);
+        END LOOP;
+        /* FIN PRC [CFO_PLSQL] CURSOR NIVEL_5 (ciclo for)*/
+
+        /* PRC [CFO_PLSQL] CURSOR NIVEL_6 (ciclo for)*/
+        FOR f IN crs_nivel_6(evc2Empresa => lvc2Empresa,
+                             enumAnio    => lnumAnio,
+                             enumMes     => lnumMes,
+                             evc2NiveL   => i.cuenta_nivel1
+                            ) LOOP
+            -- insertar en EIR_BALANCE_SUCAVE
+            Pkg_EIR_Dml.I_EIR_BALANCE_SUCAVE(enumSecuencia => enumsecuencia,
+                                             enumUsuario   => enumusuario,
+                                             evc2Empresa   => lvc2Empresa,
+                                             enumAnio      => lnumAnio,
+                                             enumMes       => lnumMes,
+                                             evc2Cuenta    => f.cuenta,
+                                             enumSaldo_ini => f.saldo_anterior,
+                                             enumDebe      => f.debe,
+                                             enumHaber     => f.haber,
+                                             enumSaldo_fin => f.saldo_actual);
+        END LOOP;
+        /* FIN PRC [CFO_PLSQL] CURSOR NIVEL_6 (ciclo for)*/
+
+        /* PRC [CFO_PLSQL] CURSOR NIVEL_7 (ciclo for)*/
+        FOR g IN crs_nivel_7(evc2Empresa => lvc2Empresa,
+                             enumAnio    => lnumAnio,
+                             enumMes     => lnumMes,
+                             evc2NiveL   => i.cuenta_nivel1
+                            ) LOOP
+            -- insertar en EIR_BALANCE_SUCAVE
+            Pkg_EIR_Dml.I_EIR_BALANCE_SUCAVE(enumSecuencia => enumsecuencia,
+                                             enumUsuario   => enumusuario,
+                                             evc2Empresa   => lvc2Empresa,
+                                             enumAnio      => lnumAnio,
+                                             enumMes       => lnumMes,
+                                             evc2Cuenta    => g.cuenta,
+                                             enumSaldo_ini => g.saldo_anterior,
+                                             enumDebe      => g.debe,
+                                             enumHaber     => g.haber,
+                                             enumSaldo_fin => g.saldo_actual);
+        END LOOP;
+        /* FIN PRC [CFO_PLSQL] CURSOR NIVEL_7 (ciclo for)*/
+
+        /* PRC [CFO_PLSQL] CURSOR NIVEL_8 (ciclo for)*/
+        FOR h IN crs_nivel_8(evc2Empresa => lvc2Empresa,
+                             enumAnio    => lnumAnio,
+                             enumMes     => lnumMes,
+                             evc2NiveL   => i.cuenta_nivel1
+                            ) LOOP
+            -- insertar en EIR_BALANCE_SUCAVE
+            Pkg_EIR_Dml.I_EIR_BALANCE_SUCAVE(enumSecuencia => enumsecuencia,
+                                             enumUsuario   => enumusuario,
+                                             evc2Empresa   => lvc2Empresa,
+                                             enumAnio      => lnumAnio,
+                                             enumMes       => lnumMes,
+                                             evc2Cuenta    => h.cuenta,
+                                             enumSaldo_ini => h.saldo_anterior,
+                                             enumDebe      => h.debe,
+                                             enumHaber     => h.haber,
+                                             enumSaldo_fin => h.saldo_actual);
+        END LOOP;
+        /* FIN PRC [CFO_PLSQL] CURSOR NIVEL_8 (ciclo for)*/
+
+
+        /* PRC [CFO_PLSQL] CURSOR ULTIMO (ciclo for)*/
+        FOR z IN crs_ultimo(evc2Empresa => lvc2Empresa,
+                            enumAnio    => lnumAnio,
+                            enumMes     => lnumMes,
+                            evc2NiveL   => i.cuenta_nivel1
+                           ) LOOP
+            -- insertar en EIR_BALANCE_SUCAVE
+            Pkg_EIR_Dml.I_EIR_BALANCE_SUCAVE(enumSecuencia => enumsecuencia,
+                                             enumUsuario   => enumusuario,
+                                             evc2Empresa   => lvc2Empresa,
+                                             enumAnio      => lnumAnio,
+                                             enumMes       => lnumMes,
+                                             evc2Cuenta    => z.cuenta,
+                                             enumSaldo_ini => z.saldo_anterior,
+                                             enumDebe      => z.debe,
+                                             enumHaber     => z.haber,
+                                             enumSaldo_fin => z.saldo_actual);
+        END LOOP;
+        /* FIN PRC [CFO_PLSQL] CURSOR ULTIMO (ciclo for)*/
+
+    END LOOP;
+    /* FIN PRC [CFO_PLSQL] CURSOR PRINCIPAL (ciclo for)*/
+
+    IF NOT Pkg_EIR_Gral.f_status_log (enumSecuencia,3) THEN
+       ROLLBACK;
+       -- Proceso Finalizado - Error
+       Pkg_EIR_Dml.U_EIR_Anexo_Proceso(enumSecuencia,3,enumUsuario);
+    ELSE
+       COMMIT;
+       -- Proceso Finalizado - Normal
+       Pkg_EIR_Dml.U_EIR_Anexo_Proceso(enumSecuencia,3,enumUsuario);
+       -- Finaliza el proceso
+       Pkg_EIR_Dml.I_EIR_Periodo_Detalle(lnumAnio,
+                                         lnumMes,
+                                         lnumProceso,
+                                         lnumProducto,
+                                         lvc2Empresa,
+                                         enumSecuencia,
+                                         enumUsuario);
+     END IF;
+    /* PRC [CEO_PLSQL] EXECEPTION (ERROR) */
+    -- mostrar los errores no encontrados
+  EXCEPTION
+     WHEN eAdv THEN
+        -- Proceso Finalizado - Advertencia
+        Pkg_EIR_Dml.U_EIR_Anexo_Proceso(enumSecuencia,3,enumUsuario);
+     /* FIN PRC [CEO_PLSQL] EXECEPTION (ERROR) */
+  END PRC_EIR_GENERA_SUCAVE;
+  /* FIN PRC [CMO_PLSQL] INICIO DE PROGRAMA */
+
+
+  -- ----------------------------------------------------------
+  PROCEDURE PRC_EIR_GENERA_UTILIDADES ( enumSecuencia  IN  NUMBER,
+                                        enumUsuario    IN  NUMBER
+                                       )
+  IS
+
+  /* PRC[DO_PLSQL] DECLARACIONES GENERALES */
+
+     /* VAR [DO_PLSQL] DECLARACION DE VARIABLES*/
+     S                 EIR_PROCESO_JOB%ROWTYPE;
+
+     lvc2Empresa       EIR_PROCESO_JOB.empresa%TYPE;
+     ldatFecProceso    EIR_PROCESO_JOB.fecha%TYPE;
+     lnumAnexo         EIR_PROCESO_JOB.anexo%TYPE;
+     lnumVersion       EIR_PROCESO_JOB.version%TYPE;
+     lnumProducto      EIR_PROCESO_JOB.producto%TYPE;
+     lnumProceso       EIR_PROCESO.codigo%TYPE;
+
+     lnumAnio          EIR_PERIODO.anio%TYPE;
+     lnumMes           EIR_PERIODO.mes%TYPE;
+     lnumDia           NUMBER;
+     eAdv              EXCEPTION;
+     --
+     lnumSaldoIni      NUMBER:=0;
+     lnumDebe          NUMBER:=0;
+     lnumHaber         NUMBER:=0;
+     lnumSaldoFin      NUMBER:=0;
+     lvc2Cuenta        VARCHAR2(25);
+     --
+     lnumHaberAdd      NUMBER:=0;
+     lnumDebeMes       NUMBER:=0;
+     lnumHaberMes      NUMBER:=0;
+     lnumIniMes        NUMBER:=0;
+     lnumFinMes        NUMBER:=0;
+     --
+     lvc2Anio_anterior VARCHAR2(04);
+     lvc2Mes_anterior  VARCHAR2(02);
+     lvc2Anio_actual   VARCHAR2(04);
+     lvc2Mes_actual    VARCHAR2(02);
+     --
+     lbolUtil          BOOLEAN := FALSE;
+     lbolSaldo         BOOLEAN := FALSE;
+
+     /* FIN VAR [DO_PLSQL] DECLARACION DE VARIABLES */
+
+     /* CRS [DO_PLSQL] CURSOR UTILIDADES */
+     CURSOR crs_utilidades(evc2Empresa IN VARCHAR2,
+                           enumAnio    IN NUMBER,
+                           enumMes     IN NUMBER
+                          )
+     IS
+     SELECT SUBSTR(sbc.cuenta,1,1)     AS cuenta,
+            SUM(sbc.saldo_final)       AS saldo_final
+       FROM EIR_BALANCE_COMPROBACION sbc
+      WHERE sbc.empresa  = evc2Empresa --'073'
+        AND sbc.anio     = enumAnio    --'2005'
+        AND sbc.mes      = enumMes     --'05'
+        AND SUBSTR(sbc.cuenta,1,1) IN ('1','2','3')
+      GROUP BY SUBSTR(sbc.cuenta,1,1);
+     /* FIN CRS [DO_PLSQL] CURSOR UTILIDADES */
+
+  /* FIN PRC[DO_PLSQL] DECLARACIONES GENERALES */
+
+  /* PRC [CMO_PLSQL] INICIO DE PROGRAMA */
+  -- Inicio Proceso Principal --
+  BEGIN
+    -- Proceso en Ejecucion - Normal
+    Pkg_EIR_Dml.U_EIR_Anexo_Proceso(enumSecuencia,2,enumUsuario);
+
+    S              := Pkg_EIR_Dml.s_EIR_Proceso_Anexo(P_SECUENCIA => enumSecuencia);
+    lvc2Empresa    := S.Empresa ;
+    ldatFecProceso := S.Fecha ;
+    lnumAnexo      := S.Anexo ;
+    lnumVersion    := S.Version ;
+
+    lnumAnio       := TO_CHAR(ldatFecProceso,'YYYY');
+    lnumMes        := TO_CHAR(ldatFecProceso,'MM');
+    lnumDia        := TO_CHAR(ldatFecProceso,'DD');
+    lnumProceso    := S.Proceso ;
+    lnumProducto   := S.Producto;
+
+    lvc2Anio_anterior := TO_CHAR(ADD_MONTHS(ldatFecProceso, -1),'YYYY');
+    lvc2Mes_anterior  := LPAD(TO_CHAR(ADD_MONTHS(ldatFecProceso,-1),'MM'), 2,'0');
+
+    lvc2Anio_actual   := TO_CHAR(ldatFecProceso,'YYYY');
+    lvc2Mes_actual    := LPAD(TO_CHAR(ldatFecProceso,'MM'),2,'0');
+
+    -- Valida el proceso
+    IF NOT Pkg_EIR_Gral.f_Valida_Proceso(enumSecuencia,enumUsuario) THEN
+       RAISE eAdv ;
+    END IF;
+
+    /* PRC [CFO_PLSQL] CURSOR UTILIDADES (ciclo for)*/
+    FOR i IN crs_utilidades( evc2Empresa => lvc2Empresa,
+                             enumAnio    => lvc2Anio_actual,
+                             enumMes     => lvc2Mes_actual
+                           ) LOOP
+        IF i.cuenta = '1' THEN
+           lnumSaldoIni := NVL(i.saldo_final,0);   -- 12,000
+        END IF;
+        IF i.cuenta = '2' THEN
+           lnumDebe     := NVL(i.saldo_final,0);   -- <4,000>
+        END IF;
+        IF i.cuenta = '3' THEN
+           lnumHaber    := NVL(i.saldo_final,0);   -- <5,000>
+        END IF;
+        lbolUtil := TRUE;
+    END LOOP;
+    /* FIN PRC [CFO_PLSQL] CURSOR UTILIDADES (ciclo for)*/
+
+    lnumFinMes := lnumSaldoIni +  lnumDebe + lnumHaber ;  -- 3,000
+
+   ---si el monto es positivo entonces la entidad tiene utilidad
+   IF lnumFinMes>=0 THEN
+    -- El signo debe cambiar por ser de naturaleza acreedora
+    lnumFinMes := lnumFinMes * -1 ;
+
+    -- Obtener el saldo final del mes anterior como incial del mes actual
+    -- Si es Enero igual a Cero
+    IF lvc2Mes_actual = '01' THEN
+       lnumIniMes := 0;
+    ELSE
+        BEGIN
+           SELECT NVL(SUM(suc.saldo_final),0)   AS saldo_final
+             INTO lnumIniMes                                  -- 1,000
+             FROM EIR_BALANCE_SUCAVE suc
+            WHERE suc.empresa  = lvc2Empresa         --'073'
+              AND suc.anio     = lvc2Anio_anterior   --'2005'
+              AND suc.mes      = lvc2Mes_anterior    --'09'
+              AND suc.cuenta   = '39110201';
+        EXCEPTION
+           WHEN NO_DATA_FOUND THEN
+              lnumIniMes := 0;
+           WHEN OTHERS THEN
+              lnumIniMes := 0;
+        END;
+    END IF;
+
+
+    lnumHaberAdd := NVL(lnumHaber,0) + (NVL(lnumFinMes,0)) ;                   -- <5,000> + <3,000>        = -8,000
+    lnumDebeMes  := NVL(lnumSaldoIni,0) + NVL(lnumDebe,0) + NVL(lnumHaberAdd,0);  -- 12,000 + -4,000 + -8,000= 0
+    lnumHaberMes := NVL(lnumFinMes,0) + (NVL(lnumDebeMes,0) - NVL(lnumIniMes,0)); -- -3,000 + (0 + -1,000) = -2,000
+    lnumHaberMes := lnumHaberMes * -1;
+
+    IF lbolUtil THEN
+        -- Procesar 8 veces la cuenta 39
+        FOR k IN 1..8 LOOP
+
+            IF k = 1 THEN
+               lvc2Cuenta := '39';
+            ELSIF k = 2 THEN
+               lvc2Cuenta := '3901';
+            ELSIF k = 3 THEN
+               lvc2Cuenta := '390102';
+            ELSIF k = 4 THEN
+               lvc2Cuenta := '39010201';
+            ELSIF k = 5 THEN
+               lvc2Cuenta := '391';
+            ELSIF k = 6 THEN
+               lvc2Cuenta := '3911';
+            ELSIF k = 7 THEN
+               lvc2Cuenta := '391102';
+            ELSIF k = 8 THEN
+               lvc2Cuenta := '39110201';
+            END IF;
+            -- insertar en EIR_BALANCE_SUCAVE
+            Pkg_EIR_Dml.I_EIR_BALANCE_SUCAVE(enumSecuencia => enumsecuencia,
+                                             enumUsuario   => enumusuario,
+                                             evc2Empresa   => lvc2Empresa,
+                                             enumAnio      => lnumAnio,
+                                             enumMes       => lnumMes,
+                                             evc2Cuenta    => lvc2Cuenta,
+                                             enumSaldo_ini => lnumIniMes,
+                                             enumDebe      => lnumDebeMes,
+                                             enumHaber     => lnumHaberMes,
+                                             enumSaldo_fin => lnumFinMes);
+
+        END LOOP;
+        -- Sumar a la cuenta 3 el resultado de utilidades
+        UPDATE EIR_BALANCE_SUCAVE
+           SET saldo_inicial  = NVL(saldo_inicial,0) + NVL(lnumIniMes,0)  ,
+               debe           = NVL(debe,0)          + NVL(lnumDebeMes,0) ,
+               haber          = NVL(haber,0)         + NVL(lnumHaberMes,0),
+               saldo_final    = NVL(saldo_final,0)   + NVL(lnumFinMes,0)  ,
+               codigo_usuario = enumUsuario,
+               fecha_actualizacion = SYSDATE
+         WHERE empresa = lvc2Empresa
+           AND anio    = lnumAnio
+           AND mes     = lnumMes
+           AND cuenta  = '3';
+
+    END IF;
+
+   ELSE --SI ES NEGATIVO
+      lnumFinMes := lnumFinMes * -1 ;
+
+    -- Obtener el saldo final del mes anterior como incial del mes actual
+    -- Si es Enero igual a Cero
+    IF lvc2Mes_actual = '01' THEN
+       lnumIniMes := 0;
+    ELSE
+        BEGIN
+           SELECT NVL(SUM(suc.saldo_final),0)   AS saldo_final
+             INTO lnumIniMes                                  -- 1,000
+             FROM EIR_BALANCE_SUCAVE suc
+            WHERE suc.empresa  = lvc2Empresa         --'073'
+              AND suc.anio     = lvc2Anio_anterior   --'2005'
+              AND suc.mes      = lvc2Mes_anterior    --'09'
+              AND suc.cuenta   = '39120101';
+        EXCEPTION
+           WHEN NO_DATA_FOUND THEN
+              lnumIniMes := 0;
+           WHEN OTHERS THEN
+              lnumIniMes := 0;
+        END;
+    END IF;
+
+
+    lnumHaberAdd := NVL(lnumHaber,0) + (NVL(lnumFinMes,0)) ;                   -- <5,000> + <3,000>        = -8,000
+    lnumDebeMes  := NVL(lnumSaldoIni,0) + NVL(lnumDebe,0) + NVL(lnumHaberAdd,0);  -- 12,000 + -4,000 + -8,000= 0
+    lnumHaberMes := NVL(lnumFinMes,0) + (NVL(lnumDebeMes,0) - NVL(lnumIniMes,0)); -- -3,000 + (0 + -1,000) = -2,000
+    lnumHaberMes := lnumHaberMes * -1;
+
+    IF lbolUtil THEN
+        -- Procesar 8 veces la cuenta 39
+        FOR k IN 1..8 LOOP
+
+            IF k = 1 THEN
+               lvc2Cuenta := '39';
+            ELSIF k = 2 THEN
+               lvc2Cuenta := '3902';
+            ELSIF k = 3 THEN
+               lvc2Cuenta := '390201';
+            ELSIF k = 4 THEN
+               lvc2Cuenta := '39020101';
+            ELSIF k = 5 THEN
+               lvc2Cuenta := '391';
+            ELSIF k = 6 THEN
+               lvc2Cuenta := '3912';
+            ELSIF k = 7 THEN
+               lvc2Cuenta := '391201';
+            ELSIF k = 8 THEN
+               lvc2Cuenta := '39120101';
+            END IF;
+            -- insertar en EIR_BALANCE_SUCAVE
+            Pkg_EIR_Dml.I_EIR_BALANCE_SUCAVE(enumSecuencia => enumsecuencia,
+                                             enumUsuario   => enumusuario,
+                                             evc2Empresa   => lvc2Empresa,
+                                             enumAnio      => lnumAnio,
+                                             enumMes       => lnumMes,
+                                             evc2Cuenta    => lvc2Cuenta,
+                                             enumSaldo_ini => lnumIniMes,
+                                             enumDebe      => lnumDebeMes,
+                                             enumHaber     => lnumHaberMes,
+                                             enumSaldo_fin => lnumFinMes);
+
+        END LOOP;
+        -- Sumar a la cuenta 3 el resultado de utilidades
+        UPDATE EIR_BALANCE_SUCAVE
+           SET saldo_inicial  = NVL(saldo_inicial,0) + NVL(lnumIniMes,0)  ,
+               debe           = NVL(debe,0)          + NVL(lnumDebeMes,0) ,
+               haber          = NVL(haber,0)         + NVL(lnumHaberMes,0),
+               saldo_final    = NVL(saldo_final,0)   + NVL(lnumFinMes,0)  ,
+               codigo_usuario = enumUsuario,
+               fecha_actualizacion = SYSDATE
+         WHERE empresa = lvc2Empresa
+           AND anio    = lnumAnio
+           AND mes     = lnumMes
+           AND cuenta  = '3';
+
+    END IF;
+   END IF;
+    IF NOT Pkg_EIR_Gral.f_status_log (enumSecuencia,3) THEN
+       ROLLBACK;
+       -- Proceso Finalizado - Error
+       Pkg_EIR_Dml.U_EIR_Anexo_Proceso(enumSecuencia,3,enumUsuario);
+    ELSE
+       COMMIT;
+       -- Proceso Finalizado - Normal
+       Pkg_EIR_Dml.U_EIR_Anexo_Proceso(enumSecuencia,3,enumUsuario);
+       -- Finaliza el proceso
+       Pkg_EIR_Dml.I_EIR_Periodo_Detalle(lnumAnio,
+                                         lnumMes,
+                                         lnumProceso,
+                                         lnumProducto,
+                                         lvc2Empresa,
+                                         enumSecuencia,
+                                         enumUsuario);
+     END IF;
+    /* PRC [CEO_PLSQL] EXECEPTION (ERROR) */
+    -- mostrar los errores no encontrados
+  EXCEPTION
+     WHEN eAdv THEN
+        -- Proceso Finalizado - Advertencia
+        Pkg_EIR_Dml.U_EIR_Anexo_Proceso(enumSecuencia,3,enumUsuario);
+     /* FIN PRC [CEO_PLSQL] EXECEPTION (ERROR) */
+  END PRC_EIR_GENERA_UTILIDADES;
+  /* FIN PRC [CMO_PLSQL] INICIO DE PROGRAMA */
+
+
+  -- ----------------------------------------------------------
+  PROCEDURE PRC_EIR_CONSOLIDAR_CUENTA( enumSecuencia  IN  NUMBER,
+                                       enumUsuario    IN  NUMBER
+                                     )
+  IS
+
+  /* PRC[DO_PLSQL] DECLARACIONES GENERALES */
+
+     /* VAR [DO_PLSQL] DECLARACION DE VARIABLES*/
+     S                 EIR_PROCESO_JOB%ROWTYPE;
+
+     lvc2Empresa       EIR_PROCESO_JOB.empresa%TYPE;
+     ldatFecProceso    EIR_PROCESO_JOB.fecha%TYPE;
+     lnumAnexo         EIR_PROCESO_JOB.anexo%TYPE;
+     lnumVersion       EIR_PROCESO_JOB.version%TYPE;
+     lnumProducto      EIR_PROCESO_JOB.producto%TYPE;
+     lnumProceso       EIR_PROCESO.codigo%TYPE;
+
+     lnumAnio          EIR_PERIODO.anio%TYPE;
+     lnumMes           EIR_PERIODO.mes%TYPE;
+     lnumDia           NUMBER;
+     eAdv              EXCEPTION;
+     --
+
+     lvc2CtaCon        VARCHAR2(25);
+     lvc2Cuenta        VARCHAR2(25);
+     lvc2NiveL_1       VARCHAR2(25);
+     --
+     lnumSaldoIni_New  NUMBER;
+     lnumSaldoFin_New  NUMBER;
+     /* FIN VAR [DO_PLSQL] DECLARACION DE VARIABLES */
+
+     /* CRS [DO_PLSQL] CURSOR PRINCIPAL */
+     CURSOR crs_principal (evc2Empresa IN VARCHAR2,
+                           enumAnio    IN NUMBER,
+                           enumMes     IN NUMBER
+                           )
+     IS
+     SELECT DISTINCT
+            sdia.cuenta_nivel1,  Fun_EIR_Cuenta(evc2Empresa, trim(sdia.cuenta_nivel1)) descta1
+       FROM VIEW_BALANCE_COMPROBACION    sdia
+      WHERE sdia.EMPRESA = evc2Empresa --'073'
+        AND sdia.ANIO    = enumAnio    --'2005'
+        AND sdia.MES     = enumMes;    --'10'
+     /* FIN CRS [DO_PLSQL] CURSOR PRINCIPAL*/
+
+
+     /* CRS [DO_PLSQL] CURSOR CONSOLIDADO */
+     CURSOR crs_consolidar(evc2Empresa IN VARCHAR2,
+                           enumAnio    IN NUMBER,
+                           enumMes     IN NUMBER,
+                           evc2Nivel1  IN VARCHAR2,
+                           evc2CtaCon  IN VARCHAR2
+                          )
+     IS
+     SELECT --t.cuenta,
+            NVL(SUM(T.saldo_inicial),0) AS saldo_inicial,
+            NVL(SUM(T.debe),0)          AS debe,
+            NVL(SUM(T.haber),0)         AS haber,
+            NVL(SUM(T.saldo_final),0)   AS saldo_final
+       FROM EIR_BALANCE_SUCAVE T
+      WHERE T.empresa        = evc2Empresa --'073'
+        AND T.anio           = enumAnio    --2005
+        AND T.mes            = enumMes     --10
+        AND LENGTH(T.cuenta) = 4
+        AND T.cuenta LIKE evc2Nivel1       --'1%'
+        AND T.cuenta LIKE evc2CtaCon       --'1_2%'
+        AND SUBSTR(T.cuenta,1,3) <> '0';   -- 3er digito dif. a cero
+     --  group by t.cuenta
+     /* FIN CRS [DO_PLSQL] CURSOR CONSOLIDADO */
+
+  /* FIN PRC[DO_PLSQL] DECLARACIONES GENERALES */
+
+  /* PRC [CMO_PLSQL] INICIO DE PROGRAMA */
+  -- Inicio Proceso Principal --
+  BEGIN
+    -- Proceso en Ejecucion - Normal
+    Pkg_EIR_Dml.U_EIR_Anexo_Proceso(enumSecuencia,2,enumUsuario);
+
+    S              := Pkg_EIR_Dml.s_EIR_Proceso_Anexo(P_SECUENCIA => enumSecuencia);
+    lvc2Empresa    := S.Empresa ;
+    ldatFecProceso := S.Fecha ;
+    lnumAnexo      := S.Anexo ;
+    lnumVersion    := S.Version ;
+
+    lnumAnio       := TO_CHAR(ldatFecProceso,'YYYY');
+    lnumMes        := TO_CHAR(ldatFecProceso,'MM');
+    lnumDia        := TO_CHAR(ldatFecProceso,'DD');
+    lnumProceso    := S.Proceso ;
+    lnumProducto   := S.Producto;
+
+    -- Valida el proceso
+    IF NOT Pkg_EIR_Gral.f_Valida_Proceso(enumSecuencia,enumUsuario) THEN
+       RAISE eAdv ;
+    END IF;
+
+    /* PRC [CFO_PLSQL] CURSOR PRINCIPAL (ciclo for)*/
+    FOR i IN crs_principal( evc2Empresa => lvc2Empresa,
+                            enumAnio    => lnumAnio,
+                            enumMes     => lnumMes
+                           ) LOOP
+
+        /* PRC [CFO_PLSQL] CURSOR 3er. DIGITO DE CTAS  (ciclo for)*/
+        FOR L IN 1..4 LOOP
+            IF L = 1 THEN
+               lvc2CtaCon := i.cuenta_nivel1||'_1%';  -- soles
+               lvc2Cuenta := i.cuenta_nivel1||'01';
+            ELSIF L = 2 THEN
+               lvc2CtaCon := i.cuenta_nivel1||'_2%';  -- dolares
+               lvc2Cuenta := i.cuenta_nivel1||'02';
+            ELSIF L = 3 THEN
+               lvc2CtaCon := i.cuenta_nivel1||'_3%';  -- ajuste
+               lvc2Cuenta := i.cuenta_nivel1||'03';
+            ELSIF L = 4 THEN
+               lvc2CtaCon := i.cuenta_nivel1||'_6%';  -- ajuste
+               lvc2Cuenta := i.cuenta_nivel1||'06';
+            END IF;
+            lvc2Nivel_1 := i.cuenta_nivel1||'%';
+
+            /* PRC [CFO_PLSQL] CURSOR CONSOLIDAR (ciclo for)*/
+            FOR k IN crs_consolidar(evc2Empresa => lvc2Empresa,
+                                    enumAnio    => lnumAnio,
+                                    enumMes     => lnumMes,
+                                    evc2Nivel1  => lvc2NiveL_1,
+                                    evc2CtaCon  => lvc2CtaCon
+
+                                    ) LOOP
+                IF k.saldo_inicial <> 0 OR k.debe <> 0 OR
+                   k.haber <> 0 OR k.saldo_final <> 0 THEN
+                   -- insertar en EIR_BALANCE_SUCAVE
+                   Pkg_EIR_Dml.I_EIR_BALANCE_SUCAVE(enumSecuencia => enumsecuencia,
+                                                    enumUsuario   => enumusuario,
+                                                    evc2Empresa   => lvc2Empresa,
+                                                    enumAnio      => lnumAnio,
+                                                    enumMes       => lnumMes,
+                                                    evc2Cuenta    => lvc2Cuenta,
+                                                    enumSaldo_ini => k.saldo_inicial,
+                                                    enumDebe      => k.debe,
+                                                    enumHaber     => k.haber,
+                                                    enumSaldo_fin => k.saldo_final);
+                END IF; -- Fin de Condicion si columnas <> 0
+
+            END LOOP;
+            /* FIN PRC [CFO_PLSQL] CURSOR CONSOLIDAR (ciclo for)*/
+
+        END LOOP;
+        /* FIN PRC [CFO_PLSQL] CURSOR 3er. DIGITO DE CTAS  (ciclo for)*/
+
+    END LOOP;
+    /* FIN PRC [CFO_PLSQL] CURSOR PRINCIPAL (ciclo for)*/
+
+
+    IF NOT Pkg_EIR_Gral.f_status_log (enumSecuencia,3) THEN
+       ROLLBACK;
+       -- Proceso Finalizado - Error
+       Pkg_EIR_Dml.U_EIR_Anexo_Proceso(enumSecuencia,3,enumUsuario);
+    ELSE
+       COMMIT;
+       -- Proceso Finalizado - Normal
+       Pkg_EIR_Dml.U_EIR_Anexo_Proceso(enumSecuencia,3,enumUsuario);
+       -- Finaliza el proceso
+       Pkg_EIR_Dml.I_EIR_Periodo_Detalle(lnumAnio,
+                                         lnumMes,
+                                         lnumProceso,
+                                         lnumProducto,
+                                         lvc2Empresa,
+                                         enumSecuencia,
+                                         enumUsuario);
+     END IF;
+    /* PRC [CEO_PLSQL] EXECEPTION (ERROR) */
+    -- mostrar los errores no encontrados
+  EXCEPTION
+     WHEN eAdv THEN
+        -- Proceso Finalizado - Advertencia
+        Pkg_EIR_Dml.U_EIR_Anexo_Proceso(enumSecuencia,3,enumUsuario);
+     /* FIN PRC [CEO_PLSQL] EXECEPTION (ERROR) */
+  END PRC_EIR_CONSOLIDAR_CUENTA;
+  /* FIN PRC [CMO_PLSQL] INICIO DE PROGRAMA */
+
+
+  -- ----------------------------------------------------------
+  PROCEDURE PRC_EIR_CTAS_INTEGRADORAS ( enumSecuencia  IN  NUMBER,
+                                        enumUsuario    IN  NUMBER
+                                       )
+  IS
+
+  /* PRC[DO_PLSQL] DECLARACIONES GENERALES */
+
+     /* VAR [DO_PLSQL] DECLARACION DE VARIABLES*/
+     S              EIR_PROCESO_JOB%ROWTYPE;
+
+     lvc2Empresa    EIR_PROCESO_JOB.empresa%TYPE;
+     ldatFecProceso EIR_PROCESO_JOB.fecha%TYPE;
+     lnumAnexo      EIR_PROCESO_JOB.anexo%TYPE;
+     lnumVersion    EIR_PROCESO_JOB.version%TYPE;
+     lnumProducto   EIR_PROCESO_JOB.producto%TYPE;
+     lnumProceso    EIR_PROCESO.codigo%TYPE;
+
+     lnumAnio       EIR_PERIODO.anio%TYPE;
+     lnumMes        EIR_PERIODO.mes%TYPE;
+     lnumDia        NUMBER;
+     eAdv           EXCEPTION;
+
+     /* FIN VAR [DO_PLSQL] DECLARACION DE VARIABLES */
+
+     /* CRS [DO_PLSQL] CURSOR PRINCIPAL */
+     CURSOR crs_principal (evc2Empresa IN VARCHAR2,
+                           enumAnio    IN NUMBER,
+                           enumMes     IN NUMBER
+                           )
+     IS
+     SELECT DISTINCT
+            sdia.cuenta_nivel1,  Fun_EIR_Cuenta(evc2Empresa, trim(sdia.cuenta_nivel1)) descta1
+       FROM VIEW_BALANCE_COMPROBACION    sdia
+      WHERE sdia.EMPRESA = evc2Empresa --'073'
+        AND sdia.ANIO    = enumAnio    --'2005'
+        AND sdia.MES     = enumMes;    --'10'
+     /* FIN CRS [DO_PLSQL] CURSOR PRINCIPAL*/
+
+
+     /* CRS [DO_PLSQL] CURSOR NIVEL_3 */
+     CURSOR crs_nivel_3 (evc2Empresa IN VARCHAR2,
+                         enumAnio    IN NUMBER,
+                         enumMes     IN NUMBER,
+                         evc2NiveL   IN VARCHAR2)
+     IS
+     SELECT
+            SUBSTR(sdia.cuenta_nivel3,1,2)||'0'||SUBSTR(sdia.cuenta_nivel3,4) AS cuenta,
+            SUM(sdia.saldo_inicial)       AS saldo_anterior,
+            SUM(sdia.debe)                AS debe,
+            SUM(sdia.haber)               AS haber,
+            SUM(sdia.saldo_final)         AS saldo_actual
+       FROM VIEW_BALANCE_COMPROBACION    sdia
+      WHERE sdia.EMPRESA = evc2Empresa --'073'
+        AND sdia.ANIO    = enumAnio    --'2005'
+        AND sdia.MES     = enumMes     --'10'
+        AND sdia.CUENTA_NIVEL1 = evc2NiveL --1
+      GROUP BY  SUBSTR(sdia.cuenta_nivel3,1,2)||'0'||SUBSTR(sdia.cuenta_nivel3,4)
+     HAVING (SUM(sdia.saldo_inicial) <> 0
+         OR SUM(sdia.debe)          <> 0
+         OR SUM(sdia.haber)         <> 0
+         )
+        AND SUBSTR(sdia.cuenta_nivel3,1,2)||'0'||SUBSTR(sdia.cuenta_nivel3,4) <> '0';
+     /* FIN CRS [DO_PLSQL] CURSOR NIVEL_3*/
+
+     /* CRS [DO_PLSQL] CURSOR NIVEL_4 */
+     CURSOR crs_nivel_4 (evc2Empresa IN VARCHAR2,
+                         enumAnio    IN NUMBER,
+                         enumMes     IN NUMBER,
+                         evc2NiveL   IN VARCHAR2)
+     IS
+     SELECT
+            SUBSTR(sdia.cuenta_nivel4,1,2)||'0'||SUBSTR(sdia.cuenta_nivel4,4) AS cuenta,
+            SUM(sdia.saldo_inicial)       AS saldo_anterior,
+            SUM(sdia.debe)                AS debe,
+            SUM(sdia.haber)               AS haber,
+            SUM(sdia.saldo_final)         AS saldo_actual
+       FROM VIEW_BALANCE_COMPROBACION    sdia
+      WHERE sdia.EMPRESA = evc2Empresa --'073'
+        AND sdia.ANIO    = enumAnio    --'2005'
+        AND sdia.MES     = enumMes     --'10'
+        AND sdia.CUENTA_NIVEL1 = evc2NiveL --1
+      GROUP BY  SUBSTR(sdia.cuenta_nivel4,1,2)||'0'||SUBSTR(sdia.cuenta_nivel4,4)
+     HAVING (SUM(sdia.saldo_inicial) <> 0
+         OR SUM(sdia.debe)          <> 0
+         OR SUM(sdia.haber)         <> 0
+         )
+        AND SUBSTR(sdia.cuenta_nivel4,1,2)||'0'||SUBSTR(sdia.cuenta_nivel4,4) <> '0';
+     /* FIN CRS [DO_PLSQL] CURSOR NIVEL_4*/
+
+     /* CRS [DO_PLSQL] CURSOR NIVEL_5 */
+     CURSOR crs_nivel_5 (evc2Empresa IN VARCHAR2,
+                         enumAnio    IN NUMBER,
+                         enumMes     IN NUMBER,
+                         evc2NiveL   IN VARCHAR2)
+     IS
+     SELECT
+            SUBSTR(sdia.cuenta_nivel5,1,2)||'0'||SUBSTR(sdia.cuenta_nivel5,4) AS cuenta,
+            SUM(sdia.saldo_inicial)       AS saldo_anterior,
+            SUM(sdia.debe)                AS debe,
+            SUM(sdia.haber)               AS haber,
+            SUM(sdia.saldo_final)         AS saldo_actual
+       FROM VIEW_BALANCE_COMPROBACION    sdia
+      WHERE sdia.EMPRESA = evc2Empresa --'073'
+        AND sdia.ANIO    = enumAnio    --'2005'
+        AND sdia.MES     = enumMes     --'10'
+        AND sdia.CUENTA_NIVEL1 = evc2NiveL --1
+      GROUP BY  SUBSTR(sdia.cuenta_nivel5,1,2)||'0'||SUBSTR(sdia.cuenta_nivel5,4)
+     HAVING (SUM(sdia.saldo_inicial) <> 0
+         OR SUM(sdia.debe)          <> 0
+         OR SUM(sdia.haber)         <> 0
+         )
+        AND SUBSTR(sdia.cuenta_nivel5,1,2)||'0'||SUBSTR(sdia.cuenta_nivel5,4) <> '0';
+     /* FIN CRS [DO_PLSQL] CURSOR NIVEL_5*/
+
+     /* CRS [DO_PLSQL] CURSOR NIVEL_6 */
+     CURSOR crs_nivel_6 (evc2Empresa IN VARCHAR2,
+                         enumAnio    IN NUMBER,
+                         enumMes     IN NUMBER,
+                         evc2NiveL   IN VARCHAR2)
+     IS
+     SELECT
+            SUBSTR(sdia.cuenta_nivel6,1,2)||'0'||SUBSTR(sdia.cuenta_nivel6,4) AS cuenta,
+            SUM(sdia.saldo_inicial)       AS saldo_anterior,
+            SUM(sdia.debe)                AS debe,
+            SUM(sdia.haber)               AS haber,
+            SUM(sdia.saldo_final)         AS saldo_actual
+       FROM VIEW_BALANCE_COMPROBACION    sdia
+      WHERE sdia.EMPRESA = evc2Empresa --'073'
+        AND sdia.ANIO    = enumAnio    --'2005'
+        AND sdia.MES     = enumMes     --'10'
+        AND sdia.CUENTA_NIVEL1 = evc2NiveL --1
+      GROUP BY  SUBSTR(sdia.cuenta_nivel6,1,2)||'0'||SUBSTR(sdia.cuenta_nivel6,4)
+     HAVING (SUM(sdia.saldo_inicial) <> 0
+        OR SUM(sdia.debe)          <> 0
+        OR SUM(sdia.haber)         <> 0
+        )
+        AND SUBSTR(sdia.cuenta_nivel6,1,2)||'0'||SUBSTR(sdia.cuenta_nivel6,4) <> '0';
+     /* FIN CRS [DO_PLSQL] CURSOR NIVEL_6*/
+
+     /* CRS [DO_PLSQL] CURSOR NIVEL_7 */
+     CURSOR crs_nivel_7 (evc2Empresa IN VARCHAR2,
+                         enumAnio    IN NUMBER,
+                         enumMes     IN NUMBER,
+                         evc2NiveL   IN VARCHAR2)
+     IS
+     SELECT
+            SUBSTR(sdia.cuenta_nivel7,1,2)||'0'||SUBSTR(sdia.cuenta_nivel7,4) AS cuenta,
+            SUM(sdia.saldo_inicial)       AS saldo_anterior,
+            SUM(sdia.debe)                AS debe,
+            SUM(sdia.haber)               AS haber,
+            SUM(sdia.saldo_final)         AS saldo_actual
+       FROM VIEW_BALANCE_COMPROBACION    sdia
+      WHERE sdia.EMPRESA = evc2Empresa --'073'
+        AND sdia.ANIO    = enumAnio    --'2005'
+        AND sdia.MES     = enumMes     --'10'
+        AND sdia.CUENTA_NIVEL1 = evc2NiveL --1
+      GROUP BY  SUBSTR(sdia.cuenta_nivel7,1,2)||'0'||SUBSTR(sdia.cuenta_nivel7,4)
+     HAVING (SUM(sdia.saldo_inicial) <> 0
+         OR SUM(sdia.debe)          <> 0
+         OR SUM(sdia.haber)         <> 0
+         )
+        AND SUBSTR(sdia.cuenta_nivel7,1,2)||'0'||SUBSTR(sdia.cuenta_nivel7,4) <> '0';
+     /* FIN CRS [DO_PLSQL] CURSOR NIVEL_7*/
+
+     /* CRS [DO_PLSQL] CURSOR NIVEL_8 */
+     CURSOR crs_nivel_8 (evc2Empresa IN VARCHAR2,
+                         enumAnio    IN NUMBER,
+                         enumMes     IN NUMBER,
+                         evc2NiveL   IN VARCHAR2)
+     IS
+     SELECT
+            SUBSTR(sdia.cuenta_nivel8,1,2)||'0'||SUBSTR(sdia.cuenta_nivel8,4) AS cuenta,
+            SUM(sdia.saldo_inicial)       AS saldo_anterior,
+            SUM(sdia.debe)                AS debe,
+            SUM(sdia.haber)               AS haber,
+            SUM(sdia.saldo_final)         AS saldo_actual
+       FROM VIEW_BALANCE_COMPROBACION    sdia
+      WHERE sdia.EMPRESA = evc2Empresa --'073'
+        AND sdia.ANIO    = enumAnio    --'2005'
+        AND sdia.MES     = enumMes     --'10'
+        AND sdia.CUENTA_NIVEL1 = evc2NiveL --1
+      GROUP BY  SUBSTR(sdia.cuenta_nivel8,1,2)||'0'||SUBSTR(sdia.cuenta_nivel8,4)
+     HAVING (SUM(sdia.saldo_inicial) <> 0
+         OR SUM(sdia.debe)          <> 0
+         OR SUM(sdia.haber)         <> 0
+        )
+        AND SUBSTR(sdia.cuenta_nivel8,1,2)||'0'||SUBSTR(sdia.cuenta_nivel8,4) <> '0';
+     /* FIN CRS [DO_PLSQL] CURSOR NIVEL_8*/
+
+     /* CRS [DO_PLSQL] CURSOR ULTIMO */
+     CURSOR crs_ultimo (evc2Empresa IN VARCHAR2,
+                        enumAnio    IN NUMBER,
+                        enumMes     IN NUMBER,
+                        evc2NiveL   IN VARCHAR2)
+     IS
+     SELECT
+            SUBSTR(sdia.cuenta,1,2)||'0'||SUBSTR(sdia.cuenta,4) AS cuenta,
+            SUM(sdia.saldo_inicial)     AS saldo_anterior,
+            SUM(sdia.debe)              AS debe,
+            SUM(sdia.haber)             AS haber,
+            SUM(sdia.saldo_final)       AS saldo_actual
+       FROM VIEW_BALANCE_COMPROBACION    sdia
+      WHERE sdia.EMPRESA = evc2Empresa --'073'
+        AND sdia.ANIO    = enumAnio    --'2005'
+        AND sdia.MES     = enumMes     --'10'
+        AND sdia.CUENTA_NIVEL1 = evc2NiveL --1  parametro
+      GROUP BY  SUBSTR(sdia.cuenta,1,2)||'0'||SUBSTR(sdia.cuenta,4)
+     HAVING (SUM(sdia.saldo_inicial) <> 0
+         OR SUM(sdia.debe)          <> 0
+         OR SUM(sdia.haber)         <> 0
+        )
+        AND SUBSTR(sdia.cuenta,1,2)||'0'||SUBSTR(sdia.cuenta,4) <> '0';
+     /* FIN CRS [DO_PLSQL] CURSOR ULTIMO*/
+
+     /* CRS [DO_PLSQL] CURSOR RESUMEN */
+     CURSOR crs_resumen(evc2Empresa IN VARCHAR2,
+                        enumAnio    IN NUMBER,
+                        enumMes     IN NUMBER)
+     IS
+     SELECT SUBSTR(T.cuenta,1,3) AS cuenta,
+            SUM(T.saldo_inicial) AS saldo_anterior,
+            SUM(T.debe)          AS debe,
+            SUM(T.haber)         AS haber,
+            SUM(T.saldo_final)   AS saldo_actual
+       FROM EIR_BALANCE_COMPROBACION T
+      WHERE T.empresa =  evc2Empresa --'073'
+        AND T.anio    =  enumAnio    --2005
+        AND T.mes     =  enumMes     --12
+      GROUP BY SUBSTR(T.cuenta,1,3)
+     HAVING (SUM(T.saldo_inicial) <> 0
+         OR SUM(T.debe)          <> 0
+         OR SUM(T.haber)         <> 0
+         );
+     /* FIN CRS [DO_PLSQL] CURSOR RESUMEN*/
+
+
+  /* FIN PRC[DO_PLSQL] DECLARACIONES GENERALES */
+
+  /* PRC [CMO_PLSQL] INICIO DE PROGRAMA */
+  -- Inicio Proceso Principal --
+  BEGIN
+    -- Proceso en Ejecucion - Normal
+    Pkg_EIR_Dml.U_EIR_Anexo_Proceso(enumSecuencia,2,enumUsuario);
+
+    S              := Pkg_EIR_Dml.s_EIR_Proceso_Anexo(P_SECUENCIA => enumSecuencia);
+    lvc2Empresa    := S.Empresa ;
+    ldatFecProceso := S.Fecha ;
+    lnumAnexo      := S.Anexo ;
+    lnumVersion    := S.Version ;
+
+    lnumAnio       := TO_CHAR(ldatFecProceso,'YYYY');
+    lnumMes        := TO_CHAR(ldatFecProceso,'MM');
+    lnumDia        := TO_CHAR(ldatFecProceso,'DD');
+    lnumProceso    := S.Proceso ;
+    lnumProducto   := S.Producto;
+
+    -- Valida el proceso
+    IF NOT Pkg_EIR_Gral.f_Valida_Proceso(enumSecuencia,enumUsuario) THEN
+       RAISE eAdv ;
+    END IF;
+
+    --
+    --LOCK TABLE EIR_BALANCE_SUCAVE IN ROW SHARE MODE NOWAIT;
+    --
+
+    /* PRC [CFO_PLSQL] CURSOR PRINCIPAL (ciclo for)*/
+    FOR i IN crs_principal( evc2Empresa => lvc2Empresa,
+                            enumAnio    => lnumAnio,
+                            enumMes     => lnumMes
+                          ) LOOP
+
+        /* PRC [CFO_PLSQL] CURSOR NIVEL_3 (ciclo for)*/
+        FOR c IN crs_nivel_3(evc2Empresa => lvc2Empresa,
+                             enumAnio    => lnumAnio,
+                             enumMes     => lnumMes,
+                             evc2NiveL   => i.cuenta_nivel1
+                            ) LOOP
+            -- insertar en EIR_BALANCE_SUCAVE
+            Pkg_EIR_Dml.I_EIR_BALANCE_SUCAVE(enumSecuencia => enumsecuencia,
+                                             enumUsuario   => enumusuario,
+                                             evc2Empresa   => lvc2Empresa,
+                                             enumAnio      => lnumAnio,
+                                             enumMes       => lnumMes,
+                                             evc2Cuenta    => c.cuenta,
+                                             enumSaldo_ini => c.saldo_anterior,
+                                             enumDebe      => c.debe,
+                                             enumHaber     => c.haber,
+                                             enumSaldo_fin => c.saldo_actual);
+        END LOOP;
+        /* FIN PRC [CFO_PLSQL] CURSOR NIVEL_3 (ciclo for)*/
+
+        /* PRC [CFO_PLSQL] CURSOR NIVEL_4 (ciclo for)*/
+        FOR d IN crs_nivel_4(evc2Empresa => lvc2Empresa,
+                             enumAnio    => lnumAnio,
+                             enumMes     => lnumMes,
+                             evc2NiveL   => i.cuenta_nivel1
+                            ) LOOP
+            -- insertar en EIR_BALANCE_SUCAVE
+            Pkg_EIR_Dml.I_EIR_BALANCE_SUCAVE(enumSecuencia => enumsecuencia,
+                                             enumUsuario   => enumusuario,
+                                             evc2Empresa   => lvc2Empresa,
+                                             enumAnio      => lnumAnio,
+                                             enumMes       => lnumMes,
+                                             evc2Cuenta    => d.cuenta,
+                                             enumSaldo_ini => d.saldo_anterior,
+                                             enumDebe      => d.debe,
+                                             enumHaber     => d.haber,
+                                             enumSaldo_fin => d.saldo_actual);
+        END LOOP;
+        /* FIN PRC [CFO_PLSQL] CURSOR NIVEL_4 (ciclo for)*/
+
+        /* PRC [CFO_PLSQL] CURSOR NIVEL_5 (ciclo for)*/
+        FOR e IN crs_nivel_5(evc2Empresa => lvc2Empresa,
+                             enumAnio    => lnumAnio,
+                             enumMes     => lnumMes,
+                             evc2NiveL   => i.cuenta_nivel1
+                            ) LOOP
+            -- insertar en EIR_BALANCE_SUCAVE
+            Pkg_EIR_Dml.I_EIR_BALANCE_SUCAVE(enumSecuencia => enumsecuencia,
+                                             enumUsuario   => enumusuario,
+                                             evc2Empresa   => lvc2Empresa,
+                                             enumAnio      => lnumAnio,
+                                             enumMes       => lnumMes,
+                                             evc2Cuenta    => e.cuenta,
+                                             enumSaldo_ini => e.saldo_anterior,
+                                             enumDebe      => e.debe,
+                                             enumHaber     => e.haber,
+                                             enumSaldo_fin => e.saldo_actual);
+        END LOOP;
+        /* FIN PRC [CFO_PLSQL] CURSOR NIVEL_5 (ciclo for)*/
+
+        /* PRC [CFO_PLSQL] CURSOR NIVEL_6 (ciclo for)*/
+        FOR f IN crs_nivel_6(evc2Empresa => lvc2Empresa,
+                             enumAnio    => lnumAnio,
+                             enumMes     => lnumMes,
+                             evc2NiveL   => i.cuenta_nivel1
+                            ) LOOP
+            -- insertar en EIR_BALANCE_SUCAVE
+            Pkg_EIR_Dml.I_EIR_BALANCE_SUCAVE(enumSecuencia => enumsecuencia,
+                                             enumUsuario   => enumusuario,
+                                             evc2Empresa   => lvc2Empresa,
+                                             enumAnio      => lnumAnio,
+                                             enumMes       => lnumMes,
+                                             evc2Cuenta    => f.cuenta,
+                                             enumSaldo_ini => f.saldo_anterior,
+                                             enumDebe      => f.debe,
+                                             enumHaber     => f.haber,
+                                             enumSaldo_fin => f.saldo_actual);
+        END LOOP;
+        /* FIN PRC [CFO_PLSQL] CURSOR NIVEL_6 (ciclo for)*/
+
+        /* PRC [CFO_PLSQL] CURSOR NIVEL_7 (ciclo for)*/
+        FOR g IN crs_nivel_7(evc2Empresa => lvc2Empresa,
+                             enumAnio    => lnumAnio,
+                             enumMes     => lnumMes,
+                             evc2NiveL   => i.cuenta_nivel1
+                            ) LOOP
+            -- insertar en EIR_BALANCE_SUCAVE
+            Pkg_EIR_Dml.I_EIR_BALANCE_SUCAVE(enumSecuencia => enumsecuencia,
+                                             enumUsuario   => enumusuario,
+                                             evc2Empresa   => lvc2Empresa,
+                                             enumAnio      => lnumAnio,
+                                             enumMes       => lnumMes,
+                                             evc2Cuenta    => g.cuenta,
+                                             enumSaldo_ini => g.saldo_anterior,
+                                             enumDebe      => g.debe,
+                                             enumHaber     => g.haber,
+                                             enumSaldo_fin => g.saldo_actual);
+        END LOOP;
+        /* FIN PRC [CFO_PLSQL] CURSOR NIVEL_7 (ciclo for)*/
+
+        /* PRC [CFO_PLSQL] CURSOR NIVEL_8 (ciclo for)*/
+        FOR h IN crs_nivel_8(evc2Empresa => lvc2Empresa,
+                             enumAnio    => lnumAnio,
+                             enumMes     => lnumMes,
+                             evc2NiveL   => i.cuenta_nivel1
+                            ) LOOP
+            -- insertar en EIR_BALANCE_SUCAVE
+            Pkg_EIR_Dml.I_EIR_BALANCE_SUCAVE(enumSecuencia => enumsecuencia,
+                                             enumUsuario   => enumusuario,
+                                             evc2Empresa   => lvc2Empresa,
+                                             enumAnio      => lnumAnio,
+                                             enumMes       => lnumMes,
+                                             evc2Cuenta    => h.cuenta,
+                                             enumSaldo_ini => h.saldo_anterior,
+                                             enumDebe      => h.debe,
+                                             enumHaber     => h.haber,
+                                             enumSaldo_fin => h.saldo_actual);
+        END LOOP;
+        /* FIN PRC [CFO_PLSQL] CURSOR NIVEL_8 (ciclo for)*/
+
+
+        /* PRC [CFO_PLSQL] CURSOR ULTIMO (ciclo for)*/
+        FOR z IN crs_ultimo(evc2Empresa => lvc2Empresa,
+                            enumAnio    => lnumAnio,
+                            enumMes     => lnumMes,
+                            evc2NiveL   => i.cuenta_nivel1
+                           ) LOOP
+            -- insertar en EIR_BALANCE_SUCAVE
+            Pkg_EIR_Dml.I_EIR_BALANCE_SUCAVE(enumSecuencia => enumsecuencia,
+                                             enumUsuario   => enumusuario,
+                                             evc2Empresa   => lvc2Empresa,
+                                             enumAnio      => lnumAnio,
+                                             enumMes       => lnumMes,
+                                             evc2Cuenta    => z.cuenta,
+                                             enumSaldo_ini => z.saldo_anterior,
+                                             enumDebe      => z.debe,
+                                             enumHaber     => z.haber,
+                                             enumSaldo_fin => z.saldo_actual);
+        END LOOP;
+        /* FIN PRC [CFO_PLSQL] CURSOR ULTIMO (ciclo for)*/
+
+    END LOOP;
+    /* FIN PRC [CFO_PLSQL] CURSOR PRINCIPAL (ciclo for)*/
+
+    -- Resumen
+    FOR k IN crs_resumen(evc2Empresa => lvc2Empresa,
+                         enumAnio    => lnumAnio,
+                         enumMes     => lnumMes) LOOP
+        -- insertar en EIR_BALANCE_SUCAVE
+        Pkg_EIR_Dml.I_EIR_BALANCE_SUCAVE(enumSecuencia => enumsecuencia,
+                                         enumUsuario   => enumusuario,
+                                         evc2Empresa   => lvc2Empresa,
+                                         enumAnio      => lnumAnio,
+                                         enumMes       => lnumMes,
+                                         evc2Cuenta    => K.cuenta,
+                                         enumSaldo_ini => K.saldo_anterior,
+                                         enumDebe      => K.debe,
+                                         enumHaber     => K.haber,
+                                         enumSaldo_fin => K.saldo_actual);
+    END LOOP;
+
+    IF NOT Pkg_EIR_Gral.f_status_log (enumSecuencia,3) THEN
+       ROLLBACK;
+       -- Proceso Finalizado - Error
+       Pkg_EIR_Dml.U_EIR_Anexo_Proceso(enumSecuencia,3,enumUsuario);
+    ELSE
+       COMMIT;
+       -- Proceso Finalizado - Normal
+       Pkg_EIR_Dml.U_EIR_Anexo_Proceso(enumSecuencia,3,enumUsuario);
+       -- Finaliza el proceso
+       Pkg_EIR_Dml.I_EIR_Periodo_Detalle(lnumAnio,
+                                         lnumMes,
+                                         lnumProceso,
+                                         lnumProducto,
+                                         lvc2Empresa,
+                                         enumSecuencia,
+                                         enumUsuario);
+     END IF;
+    /* PRC [CEO_PLSQL] EXECEPTION (ERROR) */
+    -- mostrar los errores no encontrados
+  EXCEPTION
+     WHEN eAdv THEN
+        -- Proceso Finalizado - Advertencia
+        Pkg_EIR_Dml.U_EIR_Anexo_Proceso(enumSecuencia,3,enumUsuario);
+     /* FIN PRC [CEO_PLSQL] EXECEPTION (ERROR) */
+  END PRC_EIR_CTAS_INTEGRADORAS;
+  /* FIN PRC [CMO_PLSQL] INICIO DE PROGRAMA */
+
+
+
+  -- --------------------------------------------------------------------------
+  PROCEDURE PRC_EIR_TEXTO(pAnio      IN NUMBER,
+                          pMes       IN NUMBER,
+                          pAnexo     IN NUMBER,
+                          pVersion   IN NUMBER,
+                          pEmpresa   IN VARCHAR2,
+                          text_data OUT Pkg_EIR_Balance.text_arr ) IS
+
+    -- Definicisn de Variables para armar el Query
+    cFields                VARCHAR2(512);
+    cFrom                  VARCHAR2(512);
+    cWhere                 VARCHAR2(1000);
+    cOrder                 VARCHAR2(256);
+    cTab                   VARCHAR2(1) := CHR(9);
+    cNL                    VARCHAR2(1) := CHR(10);
+    i                      PLS_INTEGER;
+    -- Variables del Arereglo
+    values_cs              Pkg_EIR_Balance.values_cs;
+    --
+    xcuenta                EIR_BALANCE_SUCAVE.cuenta%TYPE;
+    xxcuenta               EIR_BALANCE_SUCAVE.cuenta%TYPE;
+    xsaldo_inicial         EIR_BALANCE_SUCAVE.Saldo_Inicial%TYPE;
+    xdebe                  EIR_BALANCE_SUCAVE.Debe%TYPE;
+    xhaber                 EIR_BALANCE_SUCAVE.Haber%TYPE;
+    xsaldo_final           EIR_BALANCE_SUCAVE.Saldo_Final%TYPE;
+    --
+    lvc2Fecha              VARCHAR2(6);
+    lvc2Entidad            VARCHAR2(3);
+    lvc2Cuenta             VARCHAR2(20);
+    lvc2SaldoIni           VARCHAR2(18);
+    lvc2Debito             VARCHAR2(18);
+    lvc2Credito            VARCHAR2(18);
+    lvc2SaldoFin           VARCHAR2(18);
+    lvc2Filler             VARCHAR2(27);
+    --
+    cLine                  VARCHAR2(1000);
+    --
+  BEGIN
+     i        :=  0;
+     cFields  :=  'CUENTA, SALDO_INICIAL, DEBE, HABER, SALDO_FINAL';
+     cFrom    :=  ' FROM EIR_BALANCE_SUCAVE ';
+
+     cFields  :=  'SELECT '||cFields||cNL;
+     cFrom    :=  cFrom||cNL ;
+
+
+     cWhere  :=  'EMPRESA = '||pEmpresa||cNL;
+     cWhere  :=  cWhere||'  AND ANIO = '||pAnio||cNL;
+     cWhere  :=  cWhere||'  AND MES  = '||pMes||cNL;
+     cWhere  :=  'WHERE'||cTab||cWhere||cNL;
+     cOrder  :=  'ORDER BY CUENTA '||cNL;
+
+      -- Lectuta del QUERY y asignacisn de Datos a las variables
+      OPEN values_cs FOR cFields||cFrom||cWhere||cOrder;
+      LOOP
+        FETCH values_cs INTO xcuenta,xsaldo_inicial,xdebe,xhaber,xsaldo_final;
+        EXIT WHEN values_cs%NOTFOUND;
+
+        lvc2Fecha   := TO_CHAR(pAnio)||LPAD(TO_CHAR(pMes),2,'0');
+        lvc2Entidad := pEmpresa;
+        lvc2Cuenta  := RPAD(xcuenta,20,'0');
+
+        -- Validar si cuenta tiene configuracion de signo para cambiar.
+        IF FUN_EIR_VALIDA_CUENTA (evc2Empresa => pEmpresa,
+                                  evc2Cuenta  => xcuenta
+                                  ) THEN
+           -- Obtener los montos a cambiar
+           PRC_EIR_CTAS_A_CAMBIAR(enumAnio     => pAnio,
+                                  enumMes      => pMes,
+                                  evc2Empresa  => pEmpresa,
+                                  evc2Cuenta   => xCuenta,
+                                  snumSaldoIni => xsaldo_inicial,
+                                  snumSaldoFin => xsaldo_final
+                                 );
+        END IF;
+        lvc2SaldoIni:= LPAD(LTRIM(RTRIM(TO_CHAR(xsaldo_inicial*100,'999999999999999999'))),18,' ');
+        lvc2Debito  := LPAD(LTRIM(RTRIM(TO_CHAR(xdebe*100,'999999999999999999'))),18,' ');
+        lvc2Credito := LPAD(LTRIM(RTRIM(TO_CHAR(xhaber*100,'999999999999999999'))),18,' ');
+        lvc2SaldoFin:= LPAD(LTRIM(RTRIM(TO_CHAR(xsaldo_final*100,'999999999999999999'))),18,' ');
+        lvc2Filler  := RPAD('0',27,'0');
+
+        cLine       := lvc2Fecha||lvc2Entidad||lvc2Cuenta||lvc2SaldoIni||lvc2Debito||lvc2Credito||lvc2SaldoFin||lvc2Filler;
+
+        -- Carga DATA al Arreglo
+        i                          := i + 1 ;
+        text_data(i).anexo         := pAnexo;
+        text_data(i).version       := pVersion;
+        text_data(i).linea         := cLine;
+
+      END LOOP;
+      CLOSE values_cs;
+
+   END PRC_EIR_TEXTO;
+
+  PROCEDURE PRC_EIR_TEXTO_BCR(pAnio      IN NUMBER,
+                              pMes       IN NUMBER,
+                              pAnexo     IN NUMBER,
+                              pVersion   IN NUMBER,
+                              pEmpresa   IN VARCHAR2,
+                              text_data OUT Pkg_EIR_Balance.text_arr ) IS
+
+    -- Definicisn de Variables para armar el Query
+    cFields                VARCHAR2(512);
+    cFrom                  VARCHAR2(512);
+    cWhere                 VARCHAR2(1000);
+    cOrder                 VARCHAR2(256);
+    cTab                   VARCHAR2(1) := CHR(9);
+    cNL                    VARCHAR2(1) := CHR(10);
+    i                      PLS_INTEGER;
+    -- Variables del Arereglo
+    values_cs              Pkg_EIR_Balance.values_cs;
+    --
+    xcuenta                EIR_BALANCE_SUCAVE.cuenta%TYPE;
+    xxcuenta               EIR_BALANCE_SUCAVE.cuenta%TYPE;
+    xsaldo_inicial         EIR_BALANCE_SUCAVE.Saldo_Inicial%TYPE;
+    xdebe                  EIR_BALANCE_SUCAVE.Debe%TYPE;
+    xhaber                 EIR_BALANCE_SUCAVE.Haber%TYPE;
+    xsaldo_final           EIR_BALANCE_SUCAVE.Saldo_Final%TYPE;
+    --
+    lvc2Fecha              VARCHAR2(6);
+    lvc2Entidad            VARCHAR2(3);
+    lvc2Cuenta             VARCHAR2(20);
+    lvc2SaldoIni           VARCHAR2(18);
+    lvc2Debito             VARCHAR2(18);
+    lvc2Credito            VARCHAR2(18);
+    lvc2SaldoFin           VARCHAR2(18);
+    lvc2Filler             VARCHAR2(27);
+    --
+    cLine                  VARCHAR2(1000);
+    --
+  BEGIN
+     i        :=  0;
+     cFields  :=  'CUENTA, SALDO_INICIAL, DEBE, HABER, SALDO_FINAL';
+     cFrom    :=  ' FROM EIR_BALANCE_SUCAVE ';
+
+     cFields  :=  'SELECT '||cFields||cNL;
+     cFrom    :=  cFrom||cNL ;
+
+
+     cWhere  :=  'EMPRESA = '||pEmpresa||cNL;
+     cWhere  :=  cWhere||'  AND ANIO = '||pAnio||cNL;
+     cWhere  :=  cWhere||'  AND MES  = '||pMes||cNL;
+     cWhere  :=  'WHERE'||cTab||cWhere||cNL;
+     cOrder  :=  'ORDER BY CUENTA '||cNL;
+
+      -- Lectuta del QUERY y asignacisn de Datos a las variables
+      OPEN values_cs FOR cFields||cFrom||cWhere||cOrder;
+      LOOP
+        FETCH values_cs INTO xcuenta,xsaldo_inicial,xdebe,xhaber,xsaldo_final;
+        EXIT WHEN values_cs%NOTFOUND;
+
+        lvc2Fecha   := TO_CHAR(pAnio)||LPAD(TO_CHAR(pMes),2,'0');
+        lvc2Entidad := pEmpresa;
+        lvc2Cuenta  := RPAD(xcuenta,20,'0');
+
+        -- Validar si cuenta tiene configuracion de signo para cambiar.
+        IF FUN_EIR_VALIDA_CUENTA (evc2Empresa => pEmpresa,
+                                  evc2Cuenta  => xcuenta
+                                  ) THEN
+           -- Obtener los montos a cambiar
+           PRC_EIR_CTAS_A_CAMBIAR(enumAnio     => pAnio,
+                                  enumMes      => pMes,
+                                  evc2Empresa  => pEmpresa,
+                                  evc2Cuenta   => xCuenta,
+                                  snumSaldoIni => xsaldo_inicial,
+                                  snumSaldoFin => xsaldo_final
+                                 );
+        END IF;
+        lvc2SaldoIni:= LPAD(LTRIM(RTRIM(TO_CHAR(xsaldo_inicial*100,'999999999999999999'))),18,' ');
+        lvc2Debito  := LPAD(LTRIM(RTRIM(TO_CHAR(xdebe*100,'999999999999999999'))),18,' ');
+        lvc2Credito := LPAD(LTRIM(RTRIM(TO_CHAR(xhaber*100,'999999999999999999'))),18,' ');
+        lvc2SaldoFin:= LPAD(LTRIM(RTRIM(TO_CHAR(xsaldo_final*100,'999999999999999999'))),18,' ');
+        lvc2Filler  := RPAD('0',27,'0');
+
+        cLine       := lvc2Fecha||lvc2Entidad||lvc2Cuenta||lvc2SaldoIni||lvc2Debito||lvc2Credito||lvc2SaldoFin||lvc2Filler;
+
+        -- Carga DATA al Arreglo
+        i                          := i + 1 ;
+        text_data(i).anexo         := pAnexo;
+        text_data(i).version       := pVersion;
+        text_data(i).linea         := cLine;
+
+      END LOOP;
+      CLOSE values_cs;
+
+   END PRC_EIR_TEXTO_BCR;
+
+  -- --------------------------------------------------------------------------
+  PROCEDURE PRC_EIR_EXCEL(pAnio      IN NUMBER,
+                          pMes       IN NUMBER,
+                          pAnexo     IN NUMBER,
+                          pVersion   IN NUMBER,
+                          pEmpresa   IN VARCHAR2,
+                          text_data OUT Pkg_EIR_Balance.text_arr ) IS
+
+    -- Definicisn de Variables para armar el Query
+    cFields                VARCHAR2(512);
+    cFrom                  VARCHAR2(512);
+    cWhere                 VARCHAR2(1000);
+    cOrder                 VARCHAR2(256);
+    cTab                   VARCHAR2(1) := CHR(9);
+    cNL                    VARCHAR2(1) := CHR(10);
+    i                      PLS_INTEGER;
+    -- Variables del Arereglo
+    values_cs              Pkg_EIR_Balance.values_cs;
+    --
+    xcuenta                EIR_BALANCE_SUCAVE.cuenta%TYPE;
+    xxcuenta               EIR_BALANCE_SUCAVE.cuenta%TYPE;
+    xsaldo_inicial         EIR_BALANCE_SUCAVE.Saldo_Inicial%TYPE;
+    xdebe                  EIR_BALANCE_SUCAVE.Debe%TYPE;
+    xhaber                 EIR_BALANCE_SUCAVE.Haber%TYPE;
+    xsaldo_final           EIR_BALANCE_SUCAVE.Saldo_Final%TYPE;
+    --
+    lvc2Fecha              VARCHAR2(6);
+    lvc2Entidad            VARCHAR2(3);
+    lvc2Cuenta             VARCHAR2(20);
+    lvc2Descripcion        VARCHAR2(250);
+    lvc2SaldoIni           VARCHAR2(18);
+    lvc2Debito             VARCHAR2(18);
+    lvc2Credito            VARCHAR2(18);
+    lvc2SaldoFin           VARCHAR2(18);
+    lvc2Filler             VARCHAR2(27);
+    --
+    cLine                  VARCHAR2(1000);
+    --
+  BEGIN
+     i        :=  0;
+     cFields  :=  'CUENTA, SALDO_INICIAL, DEBE, HABER, SALDO_FINAL';
+     cFrom    :=  ' FROM EIR_BALANCE_SUCAVE ';
+
+     cFields  :=  'SELECT '||cFields||cNL;
+     cFrom    :=  cFrom||cNL ;
+
+
+     cWhere  :=  'EMPRESA = '||pEmpresa||cNL;
+     cWhere  :=  cWhere||'  AND ANIO = '||pAnio||cNL;
+     cWhere  :=  cWhere||'  AND MES  = '||pMes||cNL;
+     cWhere  :=  'WHERE'||cTab||cWhere||cNL;
+     cOrder  :=  'ORDER BY CUENTA '||cNL;
+
+      -- Lectuta del QUERY y asignacisn de Datos a las variables
+      OPEN values_cs FOR cFields||cFrom||cWhere||cOrder;
+      LOOP
+        FETCH values_cs INTO xcuenta,xsaldo_inicial,xdebe,xhaber,xsaldo_final;
+        EXIT WHEN values_cs%NOTFOUND;
+
+        lvc2Fecha   := TO_CHAR(pAnio)||LPAD(TO_CHAR(pMes),2,'0');
+        lvc2Entidad := pEmpresa;
+        lvc2Cuenta  := RPAD(xcuenta,20,' ');
+        lvc2Descripcion := Fun_EIR_Cuenta(pEmpresa, xCuenta);
+        lvc2Descripcion := RPAD(NVL(lvc2Descripcion,' '),60,' ');
+
+        lvc2SaldoIni:= LPAD(LTRIM(RTRIM(TO_CHAR(xsaldo_inicial,'999999999999999.99'))),18,' ');
+        lvc2Debito  := LPAD(LTRIM(RTRIM(TO_CHAR(xdebe,'999999999999999.99'))),18,' ');
+        lvc2Credito := LPAD(LTRIM(RTRIM(TO_CHAR(xhaber,'999999999999999.99'))),18,' ');
+        lvc2SaldoFin:= LPAD(LTRIM(RTRIM(TO_CHAR(xsaldo_final,'999999999999999.99'))),18,' ');
+
+        cLine       := lvc2Cuenta||';'||lvc2Descripcion||';'||lvc2SaldoIni||';'||lvc2Debito||';'||lvc2Credito||';'||lvc2SaldoFin;
+
+        -- Carga DATA al Arreglo
+        i                          := i + 1 ;
+        text_data(i).anexo         := pAnexo;
+        text_data(i).version       := pVersion;
+        text_data(i).linea         := cLine;
+
+      END LOOP;
+      CLOSE values_cs;
+
+   END PRC_EIR_EXCEL;
+
+
+  -- ----------------------------------------------------------
+  FUNCTION FUN_EIR_VALIDA_CUENTA (evc2Empresa   IN VARCHAR2,
+                                  evc2Cuenta    IN VARCHAR2
+                                 ) RETURN BOOLEAN
+  IS
+
+  /* PRC[DO_PLSQL] DECLARACIONES GENERALES */
+
+     /* VAR [DO_PLSQL] Declaracion de Variables */
+     lbolRetorno       BOOLEAN := TRUE;
+     wHay              NUMBER;
+     /* FIN VAR [DO_PLSQL] Declaracion de Variables */
+
+  /* FIN PRC[DO_PLSQL] DECLARACIONES GENERALES */
+
+  /* PRC [CMO_PLSQL] INICIO DE PROGRAMA */
+  -- Proceso Principal --
+  BEGIN
+     BEGIN
+        SELECT 1
+          INTO wHay
+          FROM EIR_CUENTA_CONFIGURACION T
+         WHERE T.empresa = evc2Empresa --'073'
+           AND T.cuenta  = SUBSTR(evc2Cuenta,1,LENGTH(T.cuenta)) --SUBSTR('72150601',1,LENGTH(t.cuenta))
+           AND T.cuenta  = (
+                            SELECT MAX(f.cuenta)
+                              FROM EIR_CUENTA_CONFIGURACION f
+                             WHERE f.empresa = evc2Empresa --'073'
+                               AND f.cuenta = SUBSTR(evc2Cuenta,1,LENGTH(f.cuenta))
+                            );
+
+     EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+           lbolRetorno := FALSE;
+        WHEN OTHERS THEN
+           lbolRetorno := FALSE;
+     END;
+
+     RETURN (lbolRetorno);
+
+
+  END FUN_EIR_VALIDA_CUENTA;
+ /* FIN PRC [CMO_PLSQL] FUN_EIR_VALIDA_CUENTA */
+
+
+
+  -- ----------------------------------------------------------
+  PROCEDURE PRC_EIR_CTAS_A_CAMBIAR (enumAnio      IN NUMBER,
+                                    enumMes       IN NUMBER,
+                                    evc2Empresa   IN VARCHAR2,
+                                    evc2Cuenta    IN VARCHAR2,
+                                    snumSaldoIni  OUT NUMBER,
+                                    snumSaldoFin  OUT NUMBER
+                                   )
+  IS
+
+  /* PRC[DO_PLSQL] DECLARACIONES GENERALES */
+
+     /* VAR [DO_PLSQL] Declaracion de Variables */
+     lvc2Signo_inicial NUMBER;
+     lvc2Signo_final   NUMBER;
+     lnFactor          NUMBER;
+     /* FIN VAR [DO_PLSQL] Declaracion de Variables */
+
+    /* CRS [DO_PLSQL] CURSOR CONFIGURACION */
+    CURSOR crs_configuracion (evc2Empresa IN VARCHAR2,
+                              evc2Cuenta  IN VARCHAR2)
+    IS
+    SELECT T.cuenta,
+           T.signo_saldo_inicial,
+           T.signo_debe,
+           T.signo_haber,
+           T.signo_saldo_final
+      FROM EIR_CUENTA_CONFIGURACION T
+     WHERE T.empresa = evc2Empresa --'073'
+       AND T.cuenta  = SUBSTR(evc2Cuenta,1,LENGTH(T.cuenta))
+       AND T.cuenta  = (
+                        SELECT MAX(f.cuenta)
+                          FROM EIR_CUENTA_CONFIGURACION f
+                         WHERE f.empresa = evc2Empresa --'073'
+                           AND f.cuenta = SUBSTR(evc2Cuenta,1,LENGTH(f.cuenta))
+                        );
+
+    /* FIN CRS [DO_PLSQL] CURSOR CONFIGURACION  */
+
+    /* CRS [DO_PLSQL] CURSOR CTAS A CAMBIAR */
+    CURSOR crs_ctas_a_cambiar (evc2Empresa IN VARCHAR2,
+                               enumAnio    IN NUMBER,
+                               enumMes     IN NUMBER,
+                               evc2Cuenta  IN VARCHAR2)
+    IS
+    SELECT sdia.cuenta            AS cuenta,
+           sdia.saldo_inicial     AS saldo_inicial,
+           sdia.debe              AS debe,
+           sdia.haber             AS haber,
+           sdia.saldo_final       AS saldo_final
+      FROM EIR_BALANCE_SUCAVE       sdia
+     WHERE sdia.EMPRESA = evc2Empresa --'073'
+       AND sdia.ANIO    = enumAnio    --'2005'
+       AND sdia.MES     = enumMes     --'10'
+       AND sdia.cuenta  = evc2Cuenta;
+    /* FIN CRS [DO_PLSQL] CURSOR CTAS A CAMBIAR */
+
+  /* FIN PRC[DO_PLSQL] DECLARACIONES GENERALES */
+
+  /* PRC [CMO_PLSQL] INICIO DE PROGRAMA */
+  -- Proceso Principal --
+  BEGIN
+
+    /* PRC [CFO_PLSQL] CURSOR CONFIGURACION (ciclo for)*/
+    -- Procesar las cuentas a cambiar --
+    FOR L IN crs_configuracion (evc2Empresa => evc2Empresa,
+                                evc2Cuenta  => evc2Cuenta) LOOP
+        --lvc2Cuenta := L.cuenta ||'%';
+
+        /* PRC [CFO_PLSQL] CURSOR CTAS A CAMBIAR (ciclo for)*/
+        FOR M IN crs_ctas_a_cambiar(evc2Empresa => evc2Empresa,
+                                    enumAnio    => enumAnio,
+                                    enumMes     => enumMes,
+                                    evc2Cuenta  => evc2Cuenta) LOOP
+
+            lvc2Signo_inicial := SIGN(M.saldo_inicial);
+            lvc2Signo_final   := SIGN(M.saldo_final);
+
+            --- Saldo Inicial
+            IF lvc2Signo_inicial = -1 THEN
+               IF L.signo_saldo_inicial = '+' THEN
+                  lnFactor := -1;
+               ELSIF L.signo_saldo_inicial = '-' THEN
+                  lnFactor := -1;
+               END IF;
+               snumSaldoIni := M.saldo_inicial * lnFactor;
+
+            ELSIF lvc2Signo_inicial IN (1,0) THEN
+               IF L.signo_saldo_inicial = '+' THEN
+                  lnFactor := -1;
+               ELSIF L.signo_saldo_inicial = '-' THEN
+                  lnFactor := -1;
+               END IF;
+               snumSaldoIni := M.saldo_inicial * lnFactor;
+            END IF;
+
+            ----  Saldo_Final
+            IF lvc2Signo_final = -1 THEN
+               IF L.signo_saldo_final = '+' THEN
+                  lnfactor := -1;
+               ELSIF L.signo_saldo_final = '-' THEN
+                  lnfactor := -1;
+               END IF;
+               snumSaldoFin := M.saldo_final * lnFactor;
+
+            ELSIF lvc2Signo_final IN (1,0) THEN
+               IF L.signo_saldo_inicial = '+' THEN
+                  lnFactor := -1;
+               ELSIF L.signo_saldo_inicial = '-' THEN
+                  lnFactor := -1;
+               END IF;
+               snumSaldoFin := M.saldo_final * lnFactor;
+            END IF;
+
+        END LOOP;
+       /* FIN PRC [CFO_PLSQL] CURSOR CTAS A CAMBIAR (ciclo for)*/
+
+    END LOOP;
+    /* FIN PRC [CFO_PLSQL] CURSOR CONFIGURACION (ciclo for)*/
+
+
+  END PRC_EIR_CTAS_A_CAMBIAR;
+ /* FIN PRC [CMO_PLSQL] PRC_EIR_CTAS_A_CAMBIAR*/
+
+  -- ----------------------------------------------------------
+  PROCEDURE PRC_EIR_ACTUALIZA_CUENTAS (evc2Empresa IN VARCHAR2,
+                                       enumUsuario IN NUMBER)
+  IS
+
+  /* PRC[DO_PLSQL] DECLARACIONES GENERALES */
+
+
+     /* VAR [DO_PLSQL] Declaracion de Variables */
+     csql              VARCHAR2(100);
+     /* FIN VAR [DO_PLSQL] Declaracion de Variables */
+
+  /* FIN PRC[DO_PLSQL] DECLARACIONES GENERALES */
+
+  /* PRC [CMO_PLSQL] INICIO DE PROGRAMA */
+  -- Proceso Principal --
+  BEGIN
+
+     -- Si tienen permiso al Truncate
+     --csql := 'TRUNCATE TABLE EIR_CUENTA';
+     --EXECUTE IMMEDIATE csql;
+
+     -- Utilizar DELETE si NO tienen permisos con truncate
+     DELETE EIR_CUENTA;
+
+     INSERT /*+ APPEND */
+       INTO EIR_CUENTA
+           (EMPRESA,     CUENTA,   DESCRIPCION,   CODIGO_USUARIO, FECHA_ACTUALIZACION)
+     SELECT evc2Empresa, T.CODIGO, T.DESCRIPCION, enumUsuario,     SYSDATE
+       FROM CUENTA T
+       WHERE compania = evc2Empresa;
+
+
+  END PRC_EIR_ACTUALIZA_CUENTAS;
+ /* FIN PRC [CMO_PLSQL] PRC_EIR_ACTUALIZA_CUENTAS*/
+
+  PROCEDURE PRC_EIR_FILE_OUT (pEmpresa       VARCHAR2, pAnio              NUMBER,
+                              pMes             NUMBER, pDia               NUMBER,
+                              pAnexo           NUMBER, pVersion           NUMBER,
+                              pCodUsuario      NUMBER, pAnioText          NUMBER,
+                              pMesText         NUMBER, pDiaText           NUMBER,
+                              pPreoDef       VARCHAR2,
+                              pEntidad       VARCHAR2, pTipo_formato    VARCHAR2,
+                              pTipo_registro VARCHAR2, cFile        OUT VARCHAR2) IS
+
+      lvc2Moneda   VARCHAR2(2);
+      vEntidad     eir_entidad_informe.descripcion%type;
+      vCodBcr      eir_empresa.codigo_bcr%type;
+      cPreliminarDefinitivo      varchar2(1);
+  BEGIN
+      -- Determina el tipo de Moneda del Anexo para BCR
+      BEGIN
+        SELECT codigo_bcr
+        INTO vCodBcr
+        FROM eir_empresa
+        WHERE codigo = pEmpresa;
+      END;
+
+        vEntidad := Pkg_Eir_Gral.F_descripcion('EIR_ENTIDAD_INFORME',pEntidad) ;
+        IF vEntidad = 'SBS' THEN
+           cFile  := pTipo_formato||'.txt' ;
+        ELSIF vEntidad = 'BCR' THEN
+           cFile := LPAD(vCodBcr,3,0)||pPreoDef||LPAD(pTipo_formato,4,0)||LPAD(pTipo_registro,2,0)||pAnioText||LPAD(pMesText,2,0)||'U';
+        END IF;
+  END;
+
+  PROCEDURE PRC_EIR_REGISTRO_CONTROL (pEmpresa       VARCHAR2, pAnio              NUMBER,
+                                      pMes             NUMBER, pDia               NUMBER,
+                                      pAnexo           NUMBER, pVersion           NUMBER,
+                                      pCodUsuario      NUMBER, pAnioText          NUMBER,
+                                      pMesText         NUMBER, pDiaText           NUMBER,
+                                      pPreoDef       VARCHAR2,
+                                      pEntidad       VARCHAR2, pTipo_formato    VARCHAR2,
+                                      pTipo_registro VARCHAR2, cLine        OUT VARCHAR2) IS
+
+      lvc2Moneda   VARCHAR2(2);
+      vEntidad     eir_entidad_informe.descripcion%type;
+      vCodBcr      eir_empresa.codigo_bcr%type;
+      cPreliminarDefinitivo      varchar2(1);
+  BEGIN
+      -- Determina el tipo de Moneda del Anexo para BCR
+      BEGIN
+        SELECT codigo_bcr
+        INTO vCodBcr
+        FROM eir_empresa
+        WHERE codigo = pEmpresa;
+      END;
+
+        vEntidad := Pkg_Eir_Gral.F_descripcion('EIR_ENTIDAD_INFORME',pEntidad) ;
+        IF vEntidad = 'SBS' THEN
+           cLine  := null ;
+        ELSIF vEntidad = 'BCR' THEN
+           cLine := LPAD(vCodBcr,3,0)||pPreoDef||LPAD(pTipo_formato,4,0)||LPAD(pTipo_registro,2,0)||pAnioText||LPAD(pMesText,2,0)||'U';
+        END IF;
+  END;
+
+END Pkg_EIR_Balance;
