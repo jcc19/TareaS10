@@ -1,0 +1,6 @@
+"MENU_OPCION","NOMBRE","MENU","COD_USUARIO","FEC_ACTUALIZACION","TIPO_OPCION","ITEM_OPCION","IND_ACTIVO","PROGRAMA","ICONO","ESTADO"
+"S01001013","CTS","3","1","02/13/2014","M","S01001","S","","fa-analytics","1"
+"S01001013001","Fondo Seguro de Deposito","3","1","02/13/2014","O","S01001013","S","EIR00223","","1"
+"S05010","Reportes","3","1","11/10/2022","M","S05","S","","","1"
+"S0501001","Acceso al Sistema","3","1","11/10/2022","O","S05010","S","","","1"
+"S0501002","Movimientos","3","1","11/10/2022","O","S05010","S","","","1"
