@@ -1,0 +1,630 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Created with Jaspersoft Studio version 6.20.5.final using JasperReports Library version 6.20.5-3efcf2e67f959db3888d79f73dde2dbd7acb4f8e  -->
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports http://jasperreports.sourceforge.net/xsd/jasperreport.xsd" name="subrportRR1" language="javascript" pageWidth="2270" pageHeight="595" orientation="Landscape" columnWidth="2230" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="e4cfa869-41c3-43b9-b103-e9a423705afb">
+	<property name="com.jaspersoft.studio.data.sql.tables" value=""/>
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="santander"/>
+	<property name="com.jaspersoft.studio.unit." value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageHeight" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.topMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.bottomMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.leftMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.rightMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.columnWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.columnSpacing" value="pixel"/>
+	<parameter name="anio" class="java.lang.String"/>
+	<parameter name="mes" class="java.lang.String"/>
+	<parameter name="dia" class="java.lang.String"/>
+	<parameter name="anexo" class="java.lang.String"/>
+	<parameter name="version" class="java.lang.String"/>
+	<queryString language="plsql">
+		<![CDATA[SELECT *
+  FROM (SELECT AI.EMPRESA AS EMPRESA_CODIGO,
+               E.DESCRIPCION AS EMPRESA_DESCRIPCION,
+               'AL ' || DIA || ' DE ' ||
+               TRIM(TO_CHAR(TO_DATE(LPAD(DIA, 2, 0) || LPAD(MES, 2, 0) || ANIO,
+                                    'DDMMYYYY'),
+                            'MONTH')) || ' DEL ' || ANIO AS FECHA,
+AF.TITULO AS TITULO,
+               AF.CODIGO AS FILA,
+               AF.SECUENCIA AS SEC_FILA,
+               AF.DESCRIPCION AS DESC_FILA,
+               AC.CODIGO AS COLUMNA,
+             DECODE(AC.INDICADOR_VALOR,
+                      'S',
+                      AI.VALOR,
+                      ROUND(AI.IMPORTE, 2)) AS IMPORTE
+          FROM EIR_ANEXO_INFORME AI
+          JOIN EIR_ANEXO_FILA AF
+            ON AI.ANEXO = AF.ANEXO
+           AND AI.VERSION = AF.VERSION
+           AND AI.TITULO = AF.TITULO
+           AND AI.FILA = AF.CODIGO
+           AND AI.SECUENCIA_FILA = AF.SECUENCIA
+          JOIN EIR_ANEXO_COLUMNA AC
+            ON AI.ANEXO = AC.ANEXO
+           AND AI.VERSION = AC.VERSION
+           AND AI.COLUMNA = AC.CODIGO
+           AND AI.TITULO = AC.TITULO
+           AND AI.SECUENCIA_COLUMNA = AC.SECUENCIA
+           AND AF.ANEXO = AC.ANEXO
+           AND AF.VERSION = AC.VERSION
+           AND AF.TITULO = AC.TITULO
+          JOIN EIR_EMPRESA E
+            ON E.CODIGO = AI.EMPRESA
+WHERE AI.ANIO = $P{anio}
+           AND AI.MES = $P{mes}
+           AND AI.DIA = $P{dia}
+           AND AI.ANEXO = $P{anexo}
+           AND AI.VERSION = $P{version}
+           AND AI.FILA = 2
+         ORDER BY AF.TITULO, AF.CODIGO, AF.SECUENCIA)
+PIVOT(SUM(IMPORTE)
+   FOR COLUMNA IN(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23 ,24  ,25 ,26 ,27 ,28 ,29 ,30 ,31 ,32 ))]]>
+	</queryString>
+	<field name="EMPRESA_CODIGO" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="EMPRESA_CODIGO"/>
+		<property name="com.jaspersoft.studio.field.label" value="EMPRESA_CODIGO"/>
+	</field>
+	<field name="EMPRESA_DESCRIPCION" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="EMPRESA_DESCRIPCION"/>
+		<property name="com.jaspersoft.studio.field.label" value="EMPRESA_DESCRIPCION"/>
+	</field>
+	<field name="FECHA" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="FECHA"/>
+		<property name="com.jaspersoft.studio.field.label" value="FECHA"/>
+	</field>
+	<field name="TITULO" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="TITULO"/>
+		<property name="com.jaspersoft.studio.field.label" value="TITULO"/>
+	</field>
+	<field name="FILA" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="FILA"/>
+		<property name="com.jaspersoft.studio.field.label" value="FILA"/>
+	</field>
+	<field name="SEC_FILA" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="SEC_FILA"/>
+		<property name="com.jaspersoft.studio.field.label" value="SEC_FILA"/>
+	</field>
+	<field name="DESC_FILA" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="DESC_FILA"/>
+		<property name="com.jaspersoft.studio.field.label" value="DESC_FILA"/>
+	</field>
+	<field name="1" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="1"/>
+		<property name="com.jaspersoft.studio.field.label" value="1"/>
+	</field>
+	<field name="2" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="2"/>
+		<property name="com.jaspersoft.studio.field.label" value="2"/>
+	</field>
+	<field name="3" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="3"/>
+		<property name="com.jaspersoft.studio.field.label" value="3"/>
+	</field>
+	<field name="4" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="4"/>
+		<property name="com.jaspersoft.studio.field.label" value="4"/>
+	</field>
+	<field name="5" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="5"/>
+		<property name="com.jaspersoft.studio.field.label" value="5"/>
+	</field>
+	<field name="6" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="6"/>
+		<property name="com.jaspersoft.studio.field.label" value="6"/>
+	</field>
+	<field name="7" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="7"/>
+		<property name="com.jaspersoft.studio.field.label" value="7"/>
+	</field>
+	<field name="8" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="8"/>
+		<property name="com.jaspersoft.studio.field.label" value="8"/>
+	</field>
+	<field name="9" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="9"/>
+		<property name="com.jaspersoft.studio.field.label" value="9"/>
+	</field>
+	<field name="10" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="10"/>
+		<property name="com.jaspersoft.studio.field.label" value="10"/>
+	</field>
+	<field name="11" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="11"/>
+		<property name="com.jaspersoft.studio.field.label" value="11"/>
+	</field>
+	<field name="12" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="12"/>
+		<property name="com.jaspersoft.studio.field.label" value="12"/>
+	</field>
+	<field name="13" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="13"/>
+		<property name="com.jaspersoft.studio.field.label" value="13"/>
+	</field>
+	<field name="14" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="14"/>
+		<property name="com.jaspersoft.studio.field.label" value="14"/>
+	</field>
+	<field name="15" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="15"/>
+		<property name="com.jaspersoft.studio.field.label" value="15"/>
+	</field>
+	<field name="16" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="16"/>
+		<property name="com.jaspersoft.studio.field.label" value="16"/>
+	</field>
+	<field name="17" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="17"/>
+		<property name="com.jaspersoft.studio.field.label" value="17"/>
+	</field>
+	<field name="18" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="18"/>
+		<property name="com.jaspersoft.studio.field.label" value="18"/>
+	</field>
+	<field name="19" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="19"/>
+		<property name="com.jaspersoft.studio.field.label" value="19"/>
+	</field>
+	<field name="20" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="20"/>
+		<property name="com.jaspersoft.studio.field.label" value="20"/>
+	</field>
+	<field name="21" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="21"/>
+		<property name="com.jaspersoft.studio.field.label" value="21"/>
+	</field>
+	<field name="22" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="22"/>
+		<property name="com.jaspersoft.studio.field.label" value="22"/>
+	</field>
+	<field name="23" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="23"/>
+		<property name="com.jaspersoft.studio.field.label" value="23"/>
+	</field>
+	<field name="24" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="24"/>
+		<property name="com.jaspersoft.studio.field.label" value="24"/>
+	</field>
+	<field name="25" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="25"/>
+		<property name="com.jaspersoft.studio.field.label" value="25"/>
+	</field>
+	<field name="26" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="26"/>
+		<property name="com.jaspersoft.studio.field.label" value="26"/>
+	</field>
+	<field name="27" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="27"/>
+		<property name="com.jaspersoft.studio.field.label" value="27"/>
+	</field>
+	<field name="28" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="28"/>
+		<property name="com.jaspersoft.studio.field.label" value="28"/>
+	</field>
+	<field name="29" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="29"/>
+		<property name="com.jaspersoft.studio.field.label" value="29"/>
+	</field>
+	<field name="30" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="30"/>
+		<property name="com.jaspersoft.studio.field.label" value="30"/>
+	</field>
+	<field name="31" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="31"/>
+		<property name="com.jaspersoft.studio.field.label" value="31"/>
+	</field>
+	<field name="32" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="32"/>
+		<property name="com.jaspersoft.studio.field.label" value="32"/>
+	</field>
+	<background>
+		<band splitType="Stretch"/>
+	</background>
+	<detail>
+		<band height="60" splitType="Stretch">
+			<staticText>
+				<reportElement x="0" y="-20" width="360" height="20" uuid="fa7671af-9b5b-4e75-86d6-9e92da062340">
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				</reportElement>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement verticalAlignment="Middle">
+					<font size="8" isBold="true"/>
+					<paragraph leftIndent="10"/>
+				</textElement>
+				<text><![CDATA[TOTAL]]></text>
+			</staticText>
+			<textField isBlankWhenNull="true">
+				<reportElement x="360" y="-20" width="90" height="20" uuid="d832aaae-e7a0-417a-95db-8dd74b6e9b4f"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{5}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="450" y="-20" width="90" height="20" uuid="60f3830d-d8be-448b-b25c-6475f2eaf204"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{6}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="720" y="-20" width="90" height="20" uuid="e98ec495-369a-40df-b7e3-097cfd675577"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{9}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="630" y="-20" width="90" height="20" uuid="5d7a93e1-8173-4bcc-83fa-09b44ce3e9d6"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{8}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="540" y="-20" width="90" height="20" uuid="3558b14e-b6fc-4df1-a6a5-49e77c2f3e5b"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{7}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="810" y="-20" width="60" height="20" uuid="8b359e7e-f35e-433c-97fb-686a58be42f7"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{10}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="870" y="-20" width="60" height="20" uuid="61eb8d70-5c0a-4c56-9423-bd9622b59849"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{11}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="930" y="-20" width="60" height="20" uuid="c3631afd-fafc-4969-a2bb-79d8e8cb80b0"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{12}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="990" y="-20" width="60" height="20" uuid="a019f196-8ca1-436f-80e8-11b53d4b486f"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{13}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="1050" y="-20" width="70" height="20" uuid="bd35fa0a-9ded-45d6-a8be-ff071ac865fa"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{14}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="1120" y="-20" width="60" height="20" uuid="45294972-8cbe-4104-80fd-9e03d2ea0628"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{15}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="1180" y="-20" width="60" height="20" uuid="0ac74229-c372-48c0-95ec-40b4e9d41747"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{16}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="1240" y="-20" width="60" height="20" uuid="398e1751-127d-4bd1-8ce9-e751a99b6a5e"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{17}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="1300" y="-20" width="60" height="20" uuid="a90108f6-a1fa-42f5-99b8-c120481ed3ac"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{18}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="1360" y="-20" width="60" height="20" uuid="56a4f453-cafc-461d-8737-510c31e5f9e5"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{19}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="1420" y="-20" width="60" height="20" uuid="661f69b0-f1c0-4cbc-bb4b-c1f53332ed3e"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{20}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="1480" y="-20" width="60" height="20" uuid="c7d44d06-d710-41b1-9551-c88a7367f272"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{21}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="1540" y="-20" width="60" height="20" uuid="361197a6-a3f1-4cb5-92ff-afffbc84a495"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{22}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="1600" y="-20" width="60" height="20" uuid="8442ee8e-c4b0-4eba-9ba4-0afbd1bd85e4"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{23}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="1660" y="-20" width="60" height="20" uuid="3cd705c0-5fe0-4c78-973e-d784e06f0868"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{24}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="1720" y="-20" width="60" height="20" uuid="b2c39450-e124-4eef-8426-7d8065c634e3"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{25}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="1780" y="-20" width="60" height="20" uuid="b91000e2-525f-469a-9e5d-4d00fb87e88b"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{26}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="1840" y="-20" width="60" height="20" uuid="fa10e38a-e5ba-4794-99ef-44d44faeb3a3"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{27}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="1900" y="-20" width="60" height="20" uuid="78cbfdba-31b0-411d-88ea-7908a4d3c515"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{28}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="1960" y="-20" width="60" height="20" uuid="fa90482a-c4e3-466e-b6b4-398856cfe7a2"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{29}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="2020" y="-20" width="60" height="20" uuid="06b57648-853a-4c1f-83a8-1e8c942e5ae4"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{30}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="2080" y="-20" width="60" height="20" uuid="478325cc-1d4a-4348-8153-44cc054bd2e1"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{31}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="2140" y="-20" width="90" height="20" uuid="b2010775-73c3-4faa-b797-5750bd5043b2"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{32}]]></textFieldExpression>
+			</textField>
+			<subreport>
+				<reportElement x="-20" y="0" width="2270" height="60" uuid="124b9618-62b8-4e23-8ab4-bba757ccc824">
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				</reportElement>
+				<subreportParameter name="anio">
+					<subreportParameterExpression><![CDATA[$P{anio}]]></subreportParameterExpression>
+				</subreportParameter>
+				<subreportParameter name="mes">
+					<subreportParameterExpression><![CDATA[$P{mes}]]></subreportParameterExpression>
+				</subreportParameter>
+				<subreportParameter name="dia">
+					<subreportParameterExpression><![CDATA[$P{dia}]]></subreportParameterExpression>
+				</subreportParameter>
+				<subreportParameter name="anexo">
+					<subreportParameterExpression><![CDATA[$P{anexo}]]></subreportParameterExpression>
+				</subreportParameter>
+				<subreportParameter name="version">
+					<subreportParameterExpression><![CDATA[$P{version}]]></subreportParameterExpression>
+				</subreportParameter>
+				<connectionExpression><![CDATA[$P{REPORT_CONNECTION}]]></connectionExpression>
+				<subreportExpression><![CDATA["subrpotRR1Total.jasper"]]></subreportExpression>
+			</subreport>
+		</band>
+	</detail>
+</jasperReport>
