@@ -11,10 +11,14 @@
 		<![CDATA[SELECT *
   FROM (SELECT AI.EMPRESA AS EMPRESA_CODIGO,
                E.DESCRIPCION AS EMPRESA_DESCRIPCION,
-               'AL ' || DIA || ' DE ' ||
+               'AL: ' || DIA || ' DE ' ||
                TRIM(TO_CHAR(TO_DATE(LPAD(DIA, 2, 0) || LPAD(MES, 2, 0) || ANIO,
                                     'DDMMYYYY'),
                             'MONTH')) || ' DEL ' || ANIO AS FECHA,
+               'DEL: ' || 1 || ' DE ' ||
+               TRIM(TO_CHAR(TO_DATE(LPAD(DIA, 2, 0) || LPAD(MES, 2, 0) || ANIO,
+                                    'DDMMYYYY'),
+                            'MONTH')) || ' DEL ' || ANIO AS FECHA_DATO,
 AF.TITULO AS TITULO,
                AF.CODIGO AS FILA,
                AF.SECUENCIA AS SEC_FILA,
@@ -64,6 +68,10 @@ PIVOT(SUM(IMPORTE)
 	<field name="FECHA" class="java.lang.String">
 		<property name="com.jaspersoft.studio.field.name" value="FECHA"/>
 		<property name="com.jaspersoft.studio.field.label" value="FECHA"/>
+	</field>
+	<field name="FECHA_DATO" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="FECHA_DATO"/>
+		<property name="com.jaspersoft.studio.field.label" value="FECHA_DATO"/>
 	</field>
 	<field name="TITULO" class="java.math.BigDecimal">
 		<property name="com.jaspersoft.studio.field.name" value="TITULO"/>
@@ -142,23 +150,22 @@ PIVOT(SUM(IMPORTE)
 	<pageHeader>
 		<band height="80" splitType="Stretch">
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
-			<staticText>
-				<reportElement x="180" y="0" width="150" height="20" uuid="be921c1c-44db-461f-a24b-785ba77d9448">
+			<textField>
+				<reportElement x="420" y="0" width="170" height="20" uuid="2cbb8d5d-7304-44f0-815f-bf12445fd1fe">
 					<property name="com.jaspersoft.studio.unit.height" value="px"/>
-					<property name="com.jaspersoft.studio.unit.x" value="px"/>
 				</reportElement>
-				<textElement textAlignment="Left" verticalAlignment="Middle"/>
-				<text><![CDATA[Del:]]></text>
-			</staticText>
-			<staticText>
-				<reportElement x="420" y="0" width="150" height="20" uuid="26c59110-32ab-44e2-8d92-21eebba83483">
-					<property name="com.jaspersoft.studio.unit.height" value="px"/>
-					<property name="com.jaspersoft.studio.unit.x" value="px"/>
-					<property name="com.jaspersoft.studio.unit.width" value="px"/>
-				</reportElement>
-				<textElement textAlignment="Left" verticalAlignment="Middle"/>
-				<text><![CDATA[al:]]></text>
-			</staticText>
+				<textElement verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{FECHA}]]></textFieldExpression>
+			</textField>
+			<textField>
+				<reportElement x="180" y="0" width="150" height="20" uuid="606a2670-0d4e-4389-9a37-004d06e263df"/>
+				<textElement textAlignment="Left" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{FECHA_DATO}]]></textFieldExpression>
+			</textField>
 			<staticText>
 				<reportElement x="160" y="40" width="150" height="20" uuid="cd1da8cc-1d82-4d56-8928-282799082b1a">
 					<property name="com.jaspersoft.studio.unit.height" value="px"/>
@@ -179,6 +186,25 @@ PIVOT(SUM(IMPORTE)
 				<textElement textAlignment="Left" verticalAlignment="Middle"/>
 				<text><![CDATA[Código:]]></text>
 			</staticText>
+			<textField>
+				<reportElement x="205" y="40" width="100" height="20" uuid="4e39a166-3870-4215-bd5e-fde4048b93e0">
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+					<property name="com.jaspersoft.studio.unit.y" value="px"/>
+				</reportElement>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{EMPRESA_DESCRIPCION}]]></textFieldExpression>
+			</textField>
+			<textField>
+				<reportElement x="440" y="40" width="150" height="20" uuid="339af86e-5494-4749-825a-79974d880943">
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				</reportElement>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{EMPRESA_CODIGO}]]></textFieldExpression>
+			</textField>
 		</band>
 	</pageHeader>
 	<columnHeader>

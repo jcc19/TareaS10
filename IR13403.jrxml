@@ -11,10 +11,14 @@
 		<![CDATA[SELECT *
   FROM (SELECT AI.EMPRESA AS EMPRESA_CODIGO,
                E.DESCRIPCION AS EMPRESA_DESCRIPCION,
-               'AL ' || DIA || ' DE ' ||
+                'AL: ' || DIA || ' DE ' ||
                TRIM(TO_CHAR(TO_DATE(LPAD(DIA, 2, 0) || LPAD(MES, 2, 0) || ANIO,
                                     'DDMMYYYY'),
                             'MONTH')) || ' DEL ' || ANIO AS FECHA,
+               'DEL: ' || 1 || ' DE ' ||
+               TRIM(TO_CHAR(TO_DATE(LPAD(DIA, 2, 0) || LPAD(MES, 2, 0) || ANIO,
+                                    'DDMMYYYY'),
+                            'MONTH')) || ' DEL ' || ANIO AS FECHA_DATO,
 AF.TITULO AS TITULO,
                AF.CODIGO AS FILA,
                AF.SECUENCIA AS SEC_FILA,
@@ -64,6 +68,10 @@ PIVOT(SUM(IMPORTE)
 	<field name="FECHA" class="java.lang.String">
 		<property name="com.jaspersoft.studio.field.name" value="FECHA"/>
 		<property name="com.jaspersoft.studio.field.label" value="FECHA"/>
+	</field>
+	<field name="FECHA_DATO" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="FECHA_DATO"/>
+		<property name="com.jaspersoft.studio.field.label" value="FECHA_DATO"/>
 	</field>
 	<field name="TITULO" class="java.math.BigDecimal">
 		<property name="com.jaspersoft.studio.field.name" value="TITULO"/>
@@ -281,16 +289,46 @@ PIVOT(SUM(IMPORTE)
 				</textElement>
 				<text><![CDATA[Código:]]></text>
 			</staticText>
-			<staticText>
-				<reportElement x="1980" y="30" width="250" height="20" uuid="1bc2a267-7cfc-4d1c-be03-8873826d3054">
+			<textField>
+				<reportElement x="50" y="30" width="200" height="20" uuid="2211e7be-eb4b-49ed-87b6-22317ebb654e">
 					<property name="com.jaspersoft.studio.unit.height" value="px"/>
-					<property name="com.jaspersoft.studio.unit.y" value="px"/>
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
 				</reportElement>
 				<textElement verticalAlignment="Middle">
 					<font size="8"/>
 				</textElement>
-				<text><![CDATA[Del:                                                     al:]]></text>
-			</staticText>
+				<textFieldExpression><![CDATA[$F{EMPRESA_DESCRIPCION}]]></textFieldExpression>
+			</textField>
+			<textField>
+				<reportElement x="1165" y="30" width="150" height="20" uuid="efefa5dc-8ee8-4b5f-96ac-6aeb40b7b91b">
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				</reportElement>
+				<textElement textAlignment="Left" verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{EMPRESA_CODIGO}]]></textFieldExpression>
+			</textField>
+			<textField>
+				<reportElement x="1930" y="30" width="150" height="20" uuid="32d405c5-8fac-4700-91f2-a40347d0d59f">
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				</reportElement>
+				<textElement verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{FECHA_DATO}]]></textFieldExpression>
+			</textField>
+			<textField>
+				<reportElement x="2080" y="30" width="150" height="20" uuid="e24e6f9b-bcd2-484e-8949-9553f51adfc7">
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				</reportElement>
+				<textElement verticalAlignment="Middle">
+					<font size="8"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$F{FECHA}]]></textFieldExpression>
+			</textField>
 		</band>
 	</pageHeader>
 	<columnHeader>
