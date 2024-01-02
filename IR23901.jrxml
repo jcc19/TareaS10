@@ -14,11 +14,11 @@
                'AL: ' || DIA || ' DE ' ||
                TRIM(TO_CHAR(TO_DATE(LPAD(DIA, 2, 0) || LPAD(MES, 2, 0) || ANIO,
                                     'DDMMYYYY'),
-                            'MONTH')) || ' DEL ' || ANIO AS FECHA,
+                            'MONTH','nls_date_language=spanish')) || ' DEL ' || ANIO AS FECHA,
                'DEL: ' || 1 || ' DE ' ||
                TRIM(TO_CHAR(TO_DATE(LPAD(DIA, 2, 0) || LPAD(MES, 2, 0) || ANIO,
                                     'DDMMYYYY'),
-                            'MONTH')) || ' DEL ' || ANIO AS FECHA_DATO,
+                            'MONTH','nls_date_language=spanish')) || ' DEL ' || ANIO AS FECHA_DATO,
                 AF.TITULO AS TITULO,
                AF.CODIGO AS FILA,
                AF.SECUENCIA AS SEC_FILA,
@@ -55,7 +55,8 @@ WHERE AI.ANIO = $P{anio}
            AND AI.FILA = 1
          ORDER BY AF.TITULO, AF.CODIGO, AF.SECUENCIA)
 PIVOT(SUM(IMPORTE)
-   FOR COLUMNA IN(1, 2, 3, 4, 5 ))]]>
+   FOR COLUMNA IN(1, 2, 3, 4, 5 ))
+ORDER BY TITULO, FILA, SEC_FILA]]>
 	</queryString>
 	<field name="EMPRESA_CODIGO" class="java.lang.String">
 		<property name="com.jaspersoft.studio.field.name" value="EMPRESA_CODIGO"/>
