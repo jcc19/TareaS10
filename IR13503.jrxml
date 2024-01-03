@@ -9,53 +9,44 @@
 	<parameter name="version" class="java.lang.String"/>
 	<queryString language="plsql">
 		<![CDATA[SELECT *
-  FROM (SELECT AI.EMPRESA AS EMPRESA_CODIGO,
-               E.DESCRIPCION AS EMPRESA_DESCRIPCION,
-               'AL: ' || DIA || ' DE ' ||
-               TRIM(TO_CHAR(TO_DATE(LPAD(DIA, 2, 0) || LPAD(MES, 2, 0) || ANIO,
-                                    'DDMMYYYY'),
-                            'MONTH','nls_date_language=spanish')) || ' DEL ' || ANIO AS FECHA,
-               'DEL: ' || 1 || ' DE ' ||
-               TRIM(TO_CHAR(TO_DATE(LPAD(DIA, 2, 0) || LPAD(MES, 2, 0) || ANIO,
-                                    'DDMMYYYY'),
-                            'MONTH','nls_date_language=spanish')) || ' DEL ' || ANIO AS FECHA_DATO,
-AF.TITULO AS TITULO,
-               AF.CODIGO AS FILA,
-               AF.SECUENCIA AS SEC_FILA,
-               AF.DESCRIPCION AS DESC_FILA,
-               AC.CODIGO AS COLUMNA,
-             DECODE(AC.INDICADOR_VALOR,
-                      'S',
-                      AI.VALOR,
-                      ROUND(AI.IMPORTE, 2)) AS IMPORTE
-          FROM EIR_ANEXO_INFORME AI
-          JOIN EIR_ANEXO_FILA AF
-            ON AI.ANEXO = AF.ANEXO
-           AND AI.VERSION = AF.VERSION
-           AND AI.TITULO = AF.TITULO
-           AND AI.FILA = AF.CODIGO
-           AND AI.SECUENCIA_FILA = AF.SECUENCIA
-          JOIN EIR_ANEXO_COLUMNA AC
-            ON AI.ANEXO = AC.ANEXO
-           AND AI.VERSION = AC.VERSION
-           AND AI.COLUMNA = AC.CODIGO
-           AND AI.TITULO = AC.TITULO
-           AND AI.SECUENCIA_COLUMNA = AC.SECUENCIA
-           AND AF.ANEXO = AC.ANEXO
-           AND AF.VERSION = AC.VERSION
-           AND AF.TITULO = AC.TITULO
-          JOIN EIR_EMPRESA E
-            ON E.CODIGO = AI.EMPRESA
-WHERE AI.ANIO = $P{anio}
+FROM (
+    SELECT 
+        AI.EMPRESA AS EMPRESA_CODIGO,
+        E.DESCRIPCION AS EMPRESA_DESCRIPCION,
+        'AL: ' || DIA || ' DE ' ||
+        TRIM(TO_CHAR(TO_DATE(LPAD(DIA, 2, 0) || LPAD(MES, 2, 0) || ANIO, 'DDMMYYYY'), 'MONTH', 'nls_date_language=spanish')) || ' DEL ' || ANIO AS FECHA,
+        'DEL: ' || 1 || ' DE ' ||
+        TRIM(TO_CHAR(TO_DATE(LPAD(DIA, 2, 0) || LPAD(MES, 2, 0) || ANIO, 'DDMMYYYY'), 'MONTH', 'nls_date_language=spanish')) || ' DEL ' || ANIO AS FECHA_DATO,
+        AF.TITULO AS TITULO,
+        AF.CODIGO AS FILA,
+        AF.SECUENCIA AS SEC_FILA,
+        AF.DESCRIPCION AS DESC_FILA,
+        TO_CHAR(AC.CODIGO) AS COLUMNA,
+        TO_CHAR(
+            DECODE(
+                AC.INDICADOR_VALOR,
+                'S',
+                AI.VALOR,
+                ROUND(AI.IMPORTE, 2)
+            )
+        ) AS IMPORTE 
+    FROM 
+        EIR_ANEXO_INFORME AI
+        JOIN EIR_ANEXO_FILA AF ON AI.ANEXO = AF.ANEXO AND AI.VERSION = AF.VERSION AND AI.TITULO = AF.TITULO AND AI.FILA = AF.CODIGO AND AI.SECUENCIA_FILA = AF.SECUENCIA
+        JOIN EIR_ANEXO_COLUMNA AC ON AI.ANEXO = AC.ANEXO AND AI.VERSION = AC.VERSION AND AI.COLUMNA = AC.CODIGO AND AI.TITULO = AC.TITULO AND AI.SECUENCIA_COLUMNA = AC.SECUENCIA AND AF.ANEXO = AC.ANEXO AND AF.VERSION = AC.VERSION AND AF.TITULO = AC.TITULO
+        JOIN EIR_EMPRESA E ON E.CODIGO = AI.EMPRESA
+    WHERE 
+        AI.ANIO = $P{anio}
            AND AI.MES = $P{mes}
            AND AI.DIA = $P{dia}
            AND AI.ANEXO = $P{anexo}
            AND AI.VERSION = $P{version}
           AND AI.TITULO = 1
            AND AI.FILA = 1
-         ORDER BY AF.TITULO, AF.CODIGO, AF.SECUENCIA)
-PIVOT(SUM(IMPORTE)
-   FOR COLUMNA IN(1, 2, 3, 4, 5, 6, 7 ))
+)
+PIVOT(
+    MAX(IMPORTE) FOR COLUMNA IN ('1' AS "1", '2' AS "2", '3' AS "3", '4' AS "4", '5' AS "5", '6' AS "6", '7' AS "7")
+)
 ORDER BY TITULO, FILA, SEC_FILA]]>
 	</queryString>
 	<field name="EMPRESA_CODIGO" class="java.lang.String">
@@ -90,31 +81,31 @@ ORDER BY TITULO, FILA, SEC_FILA]]>
 		<property name="com.jaspersoft.studio.field.name" value="DESC_FILA"/>
 		<property name="com.jaspersoft.studio.field.label" value="DESC_FILA"/>
 	</field>
-	<field name="1" class="java.math.BigDecimal">
+	<field name="1" class="java.lang.String">
 		<property name="com.jaspersoft.studio.field.name" value="1"/>
 		<property name="com.jaspersoft.studio.field.label" value="1"/>
 	</field>
-	<field name="2" class="java.math.BigDecimal">
+	<field name="2" class="java.lang.String">
 		<property name="com.jaspersoft.studio.field.name" value="2"/>
 		<property name="com.jaspersoft.studio.field.label" value="2"/>
 	</field>
-	<field name="3" class="java.math.BigDecimal">
+	<field name="3" class="java.lang.String">
 		<property name="com.jaspersoft.studio.field.name" value="3"/>
 		<property name="com.jaspersoft.studio.field.label" value="3"/>
 	</field>
-	<field name="4" class="java.math.BigDecimal">
+	<field name="4" class="java.lang.String">
 		<property name="com.jaspersoft.studio.field.name" value="4"/>
 		<property name="com.jaspersoft.studio.field.label" value="4"/>
 	</field>
-	<field name="5" class="java.math.BigDecimal">
+	<field name="5" class="java.lang.String">
 		<property name="com.jaspersoft.studio.field.name" value="5"/>
 		<property name="com.jaspersoft.studio.field.label" value="5"/>
 	</field>
-	<field name="6" class="java.math.BigDecimal">
+	<field name="6" class="java.lang.String">
 		<property name="com.jaspersoft.studio.field.name" value="6"/>
 		<property name="com.jaspersoft.studio.field.label" value="6"/>
 	</field>
-	<field name="7" class="java.math.BigDecimal">
+	<field name="7" class="java.lang.String">
 		<property name="com.jaspersoft.studio.field.name" value="7"/>
 		<property name="com.jaspersoft.studio.field.label" value="7"/>
 	</field>
